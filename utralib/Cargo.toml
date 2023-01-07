@@ -12,7 +12,6 @@ edition = "2018"
 svd2utra = {path = "../svd2utra"}
 
 [features]
-std = []
 cramium = []
 hosted = []
 renode = []
