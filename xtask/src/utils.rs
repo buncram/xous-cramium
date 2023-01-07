@@ -351,31 +351,6 @@ pub(crate) fn generate_locales() -> Result<(), std::io::Error> {
     return Ok(());
 }
 
-/// Import the Wycheproof test vectors
-pub(crate) fn whycheproof_import() -> Result<(), crate::DynError> {
-    let input_file = "tools/wycheproof-import/x25519_test.json";
-    let output_file = "services/shellchat/src/cmds/x25519_test.bin";
-    let status = Command::new(cargo())
-        .current_dir(project_root())
-        .args(&[
-            "run",
-            "--package",
-            "wycheproof-import",
-            "--",
-            input_file,
-            output_file,
-        ])
-        .status()?;
-    if !status.success() {
-        return Err("wycheproof-import failed. If any, the output will not be usable.".into());
-    }
-
-    println!();
-    println!("Wrote wycheproof x25519 testvectors to '{}'.", output_file);
-
-    return Ok(());
-}
-
 pub(crate) fn track_language_changes(last_lang: &str) -> Result<(), crate::DynError> {
     let last_config = format!("target/{}/LAST_LANG", TARGET_TRIPLE);
     std::fs::create_dir_all(format!("target/{}/", TARGET_TRIPLE)).unwrap();

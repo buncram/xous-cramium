@@ -6,8 +6,6 @@ edition = "2018"
 description = "Initial kernel loader for Xous"
 
 [dependencies]
-ed25519-dalek-loader = { path = "ed25519-dalek-loader", default-features = false }
-curve25519-dalek-loader = { path = "curve25519-dalek-loader", default-features = false, features = ["u32e_backend"] }
 utralib = { version = "0.1.13", optional = true, default-features = false }
 
 [dependencies.com_rs]
@@ -18,8 +16,8 @@ branch = "main"
 lazy_static = "1.4.0"
 
 [features]
-precursor = ["utralib/precursor", "ed25519-dalek-loader/precursor", "curve25519-dalek-loader/precursor"]
-renode = ["utralib/renode", "ed25519-dalek-loader/renode", "curve25519-dalek-loader/renode"]
+precursor = ["utralib/cramium"]
+renode = ["utralib/renode"]
 debug-print = []
 earlyprintk = []
 renode-bypass = []
