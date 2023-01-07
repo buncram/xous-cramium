@@ -1225,6 +1225,16 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
     // check to see if we are recovering from a clean suspend or not
     let (clean, was_forced_suspend, susres_pid) = check_resume(&mut cfg);
 
+    #[cfg(feature="cramium")]
+    {
+        // cold boot path only
+        println!("no suspend marker found, doing a cold boot!");
+        clear_ram(&mut cfg);
+        phase_1(&mut cfg);
+        phase_2(&mut cfg);
+        println!("done initializing for cold boot.");
+    }
+    #[cfg(feature="precursor")]
     if !clean {
         // cold boot path
         println!("no suspend marker found, doing a cold boot!");
@@ -1372,6 +1382,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
 }
 
 fn check_resume(cfg: &mut BootConfig) -> (bool, bool, u32) {
+    #[cfg(not(feature="cramium"))]
     use utralib::generated::*;
     const WORDS_PER_SECTOR: usize = 128;
     const NUM_SECTORS: usize = 8;
@@ -1380,9 +1391,17 @@ fn check_resume(cfg: &mut BootConfig) -> (bool, bool, u32) {
     let suspend_marker = cfg.sram_start as usize + cfg.sram_size - PAGE_SIZE * 3;
     let marker: *mut[u32; WORDS_PER_PAGE] = suspend_marker as *mut[u32; WORDS_PER_PAGE];
 
+    #[cfg(not(feature="cramium"))]
     let boot_seed = CSR::new(utra::seed::HW_SEED_BASE as *mut u32);
+    #[cfg(not(feature="cramium"))]
     let seed0 = boot_seed.r(utra::seed::SEED0);
+    #[cfg(not(feature="cramium"))]
     let seed1 = boot_seed.r(utra::seed::SEED1);
+    #[cfg(feature="cramium")]
+    let seed0 = 0xfeed_face;
+    #[cfg(feature="cramium")]
+    let seed1 = 0x0101_1010;
+
     let was_forced_suspend: bool = if unsafe{(*marker)[0]} != 0 { true } else { false };
 
     let mut clean = true;

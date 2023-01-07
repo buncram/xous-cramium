@@ -16,7 +16,7 @@ branch = "main"
 lazy_static = "1.4.0"
 
 [features]
-precursor = ["utralib/cramium"]
+cramium = ["utralib/cramium"]
 renode = ["utralib/renode"]
 debug-print = []
 earlyprintk = []

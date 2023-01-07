@@ -558,12 +558,7 @@ impl Builder {
             }
 
             // ---------- extract SVD file path, as computed by utralib ----------
-            let svd_spec_path = format!("target/{}/{}/build/SVD_PATH", TARGET_TRIPLE, self.stream.to_str());
-            let mut svd_spec_file = OpenOptions::new()
-                .read(true)
-                .open(&svd_spec_path)?;
-            let mut svd_path = String::new();
-            svd_spec_file.read_to_string(&mut svd_path)?;
+            let svd_path = "precursors/soc.svd".to_string();
 
             // ---------- install any pre-built packages ----------
             services_path.append(&mut self.fetch_prebuilds()?);

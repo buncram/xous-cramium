@@ -30,7 +30,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "xous-names",
         "xous-ticktimer",
     ].to_vec();
-    let xous_kernel_remote = "xous-kernel@0.9.25";
     // packages in the user image - most of the services at this layer have cross-dependencies
     let user_pkgs = [
         &base_pkgs_remote[..],
@@ -86,8 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("renode-remote") => {
             builder.target_renode()
                    .add_services(&base_pkgs_remote.into_iter().map(String::from).collect())
-                   .remove_feature("timestamp") // crates.io package can't have a timestamp
-                   .use_kernel(xous_kernel_remote);
+                   .remove_feature("timestamp"); // crates.io package can't have a timestamp
         }
 
         // ------- hosted mode configs -------
