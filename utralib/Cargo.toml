@@ -1,0 +1,20 @@
+[package]
+name = "utralib"
+version = "0.1.13"
+authors = ["Sean Cross <sean@xobs.io>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[build-dependencies]
+svd2utra = {path = "../svd2utra"}
+
+[features]
+std = []
+cramium = []
+hosted = []
+renode = []
+precursor = [] # dummy for kernel feature that is not used
+default = ["cramium"]
