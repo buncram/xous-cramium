@@ -1,8 +1,9 @@
 MEMORY
 {
-  FLASH : ORIGIN = 0x20501000, LENGTH = 188k
-  FONTS : ORIGIN = 0x20530000, LENGTH = 4352k
-  RAM : ORIGIN = 0x40000000, LENGTH = 16M
+  /* we are using an unsigned loader, so the offset is not 1k offset */
+  FLASH : ORIGIN = 0x60500000, LENGTH = 16k
+  /* FONTS : ORIGIN = 0x20530000, LENGTH = 4352k */
+  RAM : ORIGIN = 0x61000000, LENGTH = 16M
   MEMLCD : ORIGIN = 0xB0000000, LENGTH = 32k
 }
 /*
@@ -91,10 +92,10 @@ SECTIONS
     _edata = .;
   } > REGION_DATA AT > REGION_RODATA
 
-  .fonts : ALIGN(65536)
+  /* .fonts : ALIGN(65536)
   {
       KEEP(*(.fontdata));
-  } > FONTS
+  } > FONTS */
 
   .bss (NOLOAD) :
   {

@@ -1117,7 +1117,7 @@ pub unsafe extern "C" fn rust_entry(signed_buffer: *const usize, signature: u32)
 }
 
 fn memtest() {
-    let ram_ptr: *mut u32 = 0x4000_0000 as *mut u32;
+    let ram_ptr: *mut u32 = 0x6100_0000 as *mut u32;
     let sram_ptr: *mut u32 = 0x1000_0000 as *mut u32;
     use utralib::generated::*;
 
@@ -1228,8 +1228,8 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
     #[cfg(feature="cramium")]
     {
         // cold boot path only
-        println!("no suspend marker found, doing a cold boot!");
-        clear_ram(&mut cfg);
+        println!("WARNING: RAM is not cleared");
+        // clear_ram(&mut cfg);
         phase_1(&mut cfg);
         phase_2(&mut cfg);
         println!("done initializing for cold boot.");
@@ -1280,7 +1280,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
         // trigger the interrupt; it's not immediately handled, but rather checked later on by the kernel on clean resume
         resume_csr.wfo(utra::susres::INTERRUPT_INTERRUPT, 1);
     }
-
+    /*
     println!("Font maps located as follows:");
     println!("  Hanzi @ {:08x}", fonts::zh::ZH_GLYPHS.as_ptr() as u32);
     println!("  Emoji @ {:08x}", fonts::emoji::EMOJI_GLYPHS.as_ptr() as u32);
@@ -1290,6 +1290,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
     );
     println!("  Small @ {:08x}", fonts::small::SMALL_GLYPHS.as_ptr() as u32);
     println!("  Bold @ {:08x}", fonts::bold::BOLD_GLYPHS.as_ptr() as u32);
+    */
 
     if !clean {
         // The MMU should be set up now, and memory pages assigned to their
@@ -1314,7 +1315,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
         // so that attempts to mess with the args during a resume can't lead to overwriting
         // critical parameters like these kernel arguments.
         unsafe {
-            let backup_args: *mut [u32; 7] = 0x40FF_E000 as *mut[u32; 7];
+            let backup_args: *mut [u32; 7] = 0x61FF_E000 as *mut[u32; 7];
             (*backup_args)[0] = arg_offset as u32;
             (*backup_args)[1] = ip_offset as u32;
             (*backup_args)[2] = rpt_offset as u32;
@@ -1348,7 +1349,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
         }
     } else {
         unsafe {
-            let backup_args: *mut [u32; 7] = 0x40FF_E000 as *mut[u32; 7];
+            let backup_args: *mut [u32; 7] = 0x61FF_E000 as *mut[u32; 7];
             #[cfg(feature="debug-print")]
             {
                 println!("Using backed up kernel args:");

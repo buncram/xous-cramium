@@ -184,7 +184,7 @@ impl<'a> Gfx {
 
 // returns true if the kernel is valid
 // side-effects the "devboot" register in the gfx engine if devkeys were detected
-pub fn validate_xous_img(xous_img_offset: *const u32) -> bool {
+pub fn validate_xous_img(_xous_img_offset: *const u32) -> bool {
     let mut cursor = Point {x: LEFT_MARGIN, y: (FB_LINES as i16 / 2) + 10}; // draw on bottom half
     // clear screen to all black
     let mut gfx = Gfx {

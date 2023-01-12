@@ -194,6 +194,15 @@ version = "0.1.0"
 source = "git+https://github.com/betrusted-io/com_rs?branch=main#891bdd3ca8e41f81510d112483e178aea3e3a921"
 
 [[package]]
+name = "compiler_builtins"
+version = "0.1.86"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5dae98c88e576098d7ab13ebcb40cc43e5114b2beafe61a87cda9200649ff205"
+dependencies = [
+ "rustc-std-workspace-core",
+]
+
+[[package]]
 name = "console"
 version = "0.1.0"
 dependencies = [
@@ -802,6 +811,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustc-std-workspace-core"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1956f5517128a2b6f23ab2dadf1a976f4f5b27962e7724c2bf3d45e539ec098c"
+
+[[package]]
 name = "rustc_version"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1318,6 +1333,15 @@ dependencies = [
 
 [[package]]
 name = "xous"
+version = "0.9.29"
+dependencies = [
+ "compiler_builtins",
+ "lazy_static",
+ "rustc-std-workspace-core",
+]
+
+[[package]]
+name = "xous"
 version = "0.9.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72ac1d35325af0505ac3f492f928b2e2665f17353646ff7e7c3b09e833b12a84"
@@ -1334,7 +1358,7 @@ dependencies = [
  "log",
  "num-derive",
  "num-traits",
- "xous",
+ "xous 0.9.30",
  "xous-ipc",
 ]
 
@@ -1348,7 +1372,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "rkyv",
- "xous",
+ "xous 0.9.30",
  "xous-api-log",
  "xous-ipc",
 ]
@@ -1363,7 +1387,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "rkyv",
- "xous",
+ "xous 0.9.30",
  "xous-api-log",
  "xous-api-names",
  "xous-ipc",
@@ -1379,7 +1403,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "rkyv",
- "xous",
+ "xous 0.9.30",
  "xous-api-log",
  "xous-api-names",
  "xous-api-susres",
@@ -1395,7 +1419,7 @@ checksum = "062ff9e64e967c0a27b63dbd12f3ea4b958433728c813bbbf3bb1053bac47066"
 dependencies = [
  "bitflags",
  "rkyv",
- "xous",
+ "xous 0.9.30",
 ]
 
 [[package]]
@@ -1410,7 +1434,7 @@ dependencies = [
  "rand_chacha 0.3.1",
  "stats_alloc",
  "utralib",
- "xous",
+ "xous 0.9.29",
  "xous-riscv",
 ]
 
@@ -1422,7 +1446,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "utralib",
- "xous",
+ "xous 0.9.30",
  "xous-api-log",
  "xous-ipc",
 ]
@@ -1436,7 +1460,7 @@ dependencies = [
  "num-traits",
  "rkyv",
  "utralib",
- "xous",
+ "xous 0.9.30",
  "xous-api-log",
  "xous-api-names",
  "xous-ipc",
@@ -1467,7 +1491,7 @@ dependencies = [
  "num-traits",
  "rkyv",
  "utralib",
- "xous",
+ "xous 0.9.30",
  "xous-api-log",
  "xous-api-names",
  "xous-api-ticktimer",
