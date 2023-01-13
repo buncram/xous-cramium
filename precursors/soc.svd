@@ -3,7 +3,7 @@
 <device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD.xsd" >
     <vendor>litex</vendor>
     <name>SOC</name>
-    <description><![CDATA[Litex SoC 2023-01-08 00:37:39]]></description>
+    <description><![CDATA[Litex SoC 2023-01-13 01:59:58]]></description>
 
     <addressUnitBits>8</addressUnitBits>
     <width>32</width>
@@ -2857,8 +2857,98 @@ VCCBRAM (V) = ``Value`` x 3 / 4096.]]></description>
             <groupName>MAIN</groupName>
             <registers>
                 <register>
-                    <name>IRQTEST0</name>
+                    <name>REPORT</name>
+                    <description><![CDATA[A 32-bit value to report sim state]]></description>
                     <addressOffset>0x0000</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>report</name>
+                            <msb>31</msb>
+                            <bitRange>[31:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>SUCCESS</name>
+                    <description><![CDATA[Determines the result code for the simulation. 0 means fail, 1 means pass]]></description>
+                    <addressOffset>0x0004</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>success</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>DONE</name>
+                    <description><![CDATA[Set to `1` if the simulation should auto-terminate]]></description>
+                    <addressOffset>0x0008</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>done</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>WDATA</name>
+                    <description><![CDATA[Write values here to check cache coherence issues]]></description>
+                    <addressOffset>0x000c</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>wdata</name>
+                            <msb>31</msb>
+                            <bitRange>[31:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>RDATA</name>
+                    <description><![CDATA[Data readback derived from coherence_w]]></description>
+                    <addressOffset>0x0010</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>rdata</name>
+                            <msb>31</msb>
+                            <bitRange>[31:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>RINC</name>
+                    <description><![CDATA[Every time this is read, the base value is incremented by 3]]></description>
+                    <addressOffset>0x0014</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>rinc</name>
+                            <msb>31</msb>
+                            <bitRange>[31:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>IRQTEST0</name>
+                    <addressOffset>0x0018</addressOffset>
                     <resetValue>0x00</resetValue>
                     <size>32</size>
                     <fields>
@@ -2873,7 +2963,7 @@ VCCBRAM (V) = ``Value`` x 3 / 4096.]]></description>
                 </register>
                 <register>
                     <name>IRQTEST1</name>
-                    <addressOffset>0x0004</addressOffset>
+                    <addressOffset>0x001c</addressOffset>
                     <resetValue>0x00</resetValue>
                     <size>32</size>
                     <fields>
@@ -2889,7 +2979,7 @@ VCCBRAM (V) = ``Value`` x 3 / 4096.]]></description>
             </registers>
             <addressBlock>
                 <offset>0</offset>
-                <size>0x8</size>
+                <size>0x20</size>
                 <usage>registers</usage>
             </addressBlock>
         </peripheral>
@@ -2903,7 +2993,7 @@ VCCBRAM (V) = ``Value`` x 3 / 4096.]]></description>
             </memoryRegion>
             <memoryRegion>
                 <name>MEMLCD</name>
-                <baseAddress>0xB0000000</baseAddress>
+                <baseAddress>0x42000000</baseAddress>
                 <size>0x00005C20</size>
             </memoryRegion>
             <memoryRegion>

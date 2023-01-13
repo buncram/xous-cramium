@@ -60,6 +60,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             language_set = true;
         }
     }
+    let kernel_features = get_flag("--kernel-feature")?;
+    for feature in kernel_features {
+        builder.add_kernel_feature(&feature);
+    }
     if !language_set { // the default language is english
         track_language_changes("en")?;
     }

@@ -21,5 +21,6 @@ renode = ["utralib/renode"]
 debug-print = []
 earlyprintk = []
 renode-bypass = []
+shortcuts = []
 #default = ["debug-print"]
-default = []
+default = ["shortcuts"] # turn this off for real hardware, shortcuts are there to speed up simulations

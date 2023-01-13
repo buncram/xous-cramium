@@ -6,7 +6,7 @@ const VERSION_STR: &'static str = "Xous(Cramium) OS Loader v0.1.0\n\r";
 // v0.1.0 -- initial version
 
 pub const STACK_LEN: u32 = 8192 - (7 * 4); // 7 words for backup kernel args
-pub const STACK_TOP: u32 = 0x4100_0000 - STACK_LEN;
+pub const STACK_TOP: u32 = 0x6200_0000 - STACK_LEN;
 
 use utralib::generated::*;
 
@@ -54,10 +54,13 @@ impl<'a> Gfx {
     }
     pub fn flush(&mut self) {
         self.update_dirty();
-        while self.busy() {}
-        // clear the dirty bits
-        for lines in 0..FB_LINES {
-            self.fb[lines * FB_WIDTH_WORDS + (FB_WIDTH_WORDS - 1)] &= 0x0000_FFFF;
+        #[cfg(not(feature="shortcuts"))]
+        {
+            while self.busy() {}
+            // clear the dirty bits
+            for lines in 0..FB_LINES {
+                self.fb[lines * FB_WIDTH_WORDS + (FB_WIDTH_WORDS - 1)] &= 0x0000_FFFF;
+            }
         }
     }
 

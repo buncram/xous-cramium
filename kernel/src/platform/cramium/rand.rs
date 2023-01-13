@@ -12,6 +12,10 @@ use xous_kernel::{MemoryFlags, MemoryType, PID};
 /// See https://github.com/betrusted-io/xous-core/blob/master/docs/memory.md
 pub const TRNG_KERNEL_ADDR: usize = 0xffce_0000;
 pub static mut TRNG_KERNEL: Option<TrngKernel> = None;
+#[cfg(feature="hwsim")]
+use core::sync::atomic::{AtomicU32, Ordering};
+#[cfg(feature="hwsim")]
+static LOCAL_RNG_STATE: AtomicU32 = AtomicU32::new(2);
 
 pub struct TrngKernel {
     pub trng_kernel_csr: CSR<u32>,
@@ -35,6 +39,7 @@ impl TrngKernel {
             // simulations show this isn't strictly necessary, but I prefer to have it
             // just in case a subtle bug in the reset logic leaves something deterministic
             // in the connecting logic: the simulation coverage stops at the edge of the TRNG block.
+            #[cfg(not(feature="hwsim"))]
             for _ in 0..4 {
                 // wait until the urandom port is initialized
                 while self.trng_kernel_csr.rf(utra::trng_kernel::URANDOM_VALID_URANDOM_VALID) == 0 {}
@@ -43,7 +48,7 @@ impl TrngKernel {
             }
         }
     }
-
+    #[cfg(not(feature="hwsim"))]
     pub fn get_u32(&mut self) -> u32 {
         if false { // raw random path
             while self.trng_kernel_csr.rf(utra::trng_kernel::STATUS_AVAIL) == 0 {}
@@ -52,6 +57,17 @@ impl TrngKernel {
             while self.trng_kernel_csr.rf(utra::trng_kernel::URANDOM_VALID_URANDOM_VALID) == 0 {}
             self.trng_kernel_csr.rf(utra::trng_kernel::URANDOM_URANDOM)
         }
+    }
+    #[cfg(feature="hwsim")]
+    pub fn get_u32(&self) -> u32 {
+        use rand_chacha::ChaCha8Rng;
+        use rand_chacha::rand_core::RngCore;
+        use rand_chacha::rand_core::SeedableRng;
+
+        let mut rng = ChaCha8Rng::seed_from_u64(LOCAL_RNG_STATE.load(Ordering::SeqCst) as u64);
+        let r = rng.next_u32();
+        LOCAL_RNG_STATE.store(rng.next_u64() as u32, Ordering::SeqCst);
+        r
     }
 }
 

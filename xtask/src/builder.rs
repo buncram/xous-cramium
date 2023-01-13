@@ -254,7 +254,6 @@ impl Builder {
         self
     }
     /// add a feature to be passed on to just the loader
-    #[allow(dead_code)]
     pub fn add_kernel_feature<'a>(&'a mut self, feature: &str) -> &'a mut Builder {
         self.kernel_features.push(feature.into());
         self
