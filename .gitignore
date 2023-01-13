@@ -10,6 +10,7 @@ services/status/src/app_autogen.rs
 
 # shouldn't be committed
 apps/vault/tools/crypto_data
+do_not_checkin/
 
 *.map
 
