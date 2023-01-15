@@ -3,7 +3,7 @@
 <device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD.xsd" >
     <vendor>litex</vendor>
     <name>SOC</name>
-    <description><![CDATA[Litex SoC 2023-01-15 23:47:42]]></description>
+    <description><![CDATA[Litex SoC 2023-01-16 02:46:04]]></description>
 
     <addressUnitBits>8</addressUnitBits>
     <width>32</width>
@@ -3003,7 +3003,7 @@ VCCBRAM (V) = ``Value`` x 3 / 4096.]]></description>
             </memoryRegion>
         </memoryRegions>
         <constants>
-            <constant name="CONFIG_CLOCK_FREQUENCY" value="75000000" />
+            <constant name="CONFIG_CLOCK_FREQUENCY" value="100000000" />
             <constant name="CONFIG_CPU_TYPE_NONE" value="None" />
             <constant name="CONFIG_CPU_VARIANT_STANDARD" value="None" />
             <constant name="CONFIG_CPU_HUMAN_NAME" value="Unknown" />

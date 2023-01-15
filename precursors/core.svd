@@ -3,7 +3,7 @@
 <device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD.xsd" >
     <vendor>litex</vendor>
     <name>SOC</name>
-    <description><![CDATA[Litex SoC 2023-01-15 23:47:38]]></description>
+    <description><![CDATA[Litex SoC 2023-01-16 02:46:00]]></description>
 
     <addressUnitBits>8</addressUnitBits>
     <width>32</width>
@@ -319,13 +319,28 @@ specified `asid` value]]></description>
                             <msb>0</msb>
                             <bitRange>[0:0]</bitRange>
                             <lsb>0</lsb>
-                            <description><![CDATA[Value corresponding to the ASID specified it `get_asid_addr`. `1` means trusted]]></description>
+                            <description><![CDATA[Value corresponding to the ASID specified in `get_asid_addr`. `1` means trusted]]></description>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>SET_PRIVILEGE</name>
+                    <addressOffset>0x000c</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>mpp</name>
+                            <msb>1</msb>
+                            <bitRange>[1:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[Value of `mpp` bit from `mstatus` that must match for code to be trusted]]></description>
                         </field>
                     </fields>
                 </register>
                 <register>
                     <name>CONTROL</name>
-                    <addressOffset>0x000c</addressOffset>
+                    <addressOffset>0x0010</addressOffset>
                     <resetValue>0x00</resetValue>
                     <size>32</size>
                     <fields>
@@ -360,13 +375,21 @@ cleared to `0`, the `CoreUser` signal is always valid. Defaults to `0`.]]></desc
                             <description><![CDATA[When set to `1`, requires the `b` `ppn` window to be trusted to assert
 `CoreUser`]]></description>
                         </field>
+                        <field>
+                            <name>privilege</name>
+                            <msb>4</msb>
+                            <bitRange>[4:4]</bitRange>
+                            <lsb>4</lsb>
+                            <description><![CDATA[When set to `1`, requires the current privilege state to match that specified in
+`set_privilege.mpp`]]></description>
+                        </field>
                     </fields>
                 </register>
                 <register>
                     <name>PROTECT</name>
                     <description><![CDATA[Writing `1` to this bit prevents any further updates to CoreUser configuration
 status. Can only be reversed with a system reset.]]></description>
-                    <addressOffset>0x0010</addressOffset>
+                    <addressOffset>0x0014</addressOffset>
                     <resetValue>0x00</resetValue>
                     <size>32</size>
                     <fields>
@@ -380,7 +403,7 @@ status. Can only be reversed with a system reset.]]></description>
                 </register>
                 <register>
                     <name>WINDOW_AL</name>
-                    <addressOffset>0x0014</addressOffset>
+                    <addressOffset>0x0018</addressOffset>
                     <resetValue>0x00</resetValue>
                     <size>32</size>
                     <fields>
@@ -396,7 +419,7 @@ to this value]]></description>
                 </register>
                 <register>
                     <name>WINDOW_AH</name>
-                    <addressOffset>0x0018</addressOffset>
+                    <addressOffset>0x001c</addressOffset>
                     <resetValue>0x00</resetValue>
                     <size>32</size>
                     <fields>
@@ -413,7 +436,7 @@ this value (so a value of 255 would match everything from 0 to 255; resulting in
                 </register>
                 <register>
                     <name>WINDOW_BL</name>
-                    <addressOffset>0x001c</addressOffset>
+                    <addressOffset>0x0020</addressOffset>
                     <resetValue>0x00</resetValue>
                     <size>32</size>
                     <fields>
@@ -429,7 +452,7 @@ to this value]]></description>
                 </register>
                 <register>
                     <name>WINDOW_BH</name>
-                    <addressOffset>0x0020</addressOffset>
+                    <addressOffset>0x0024</addressOffset>
                     <resetValue>0x00</resetValue>
                     <size>32</size>
                     <fields>
@@ -447,7 +470,7 @@ this value (so a value of 255 would match everything from 0 to 255; resulting in
             </registers>
             <addressBlock>
                 <offset>0</offset>
-                <size>0x24</size>
+                <size>0x28</size>
                 <usage>registers</usage>
             </addressBlock>
         </peripheral>
