@@ -11,8 +11,10 @@ fn main() {
     )
     .expect("couldn't map Core Control CSR range");
     let mut core_csr = CSR::new(csr.as_mut_ptr() as *mut u32);
+    #[cfg(feature="hwsim")]
     core_csr.wfo(utra::main::REPORT_REPORT, 0x600d_0000);
 
+    #[cfg(feature="hwsim")]
     core_csr.wfo(utra::main::REPORT_REPORT, 0xa51d_0000);
     let coreuser_csr = xous::syscall::map_memory(
         xous::MemoryAddress::new(utra::coreuser::HW_COREUSER_BASE),
@@ -44,6 +46,7 @@ fn main() {
     );
     // turn off coreuser control updates
     coreuser.wo(utra::coreuser::PROTECT, 1);
+    #[cfg(feature="hwsim")]
     core_csr.wfo(utra::main::REPORT_REPORT, 0xa51d_600d);
 
     log::info!("my PID is {}", xous::process::id());
@@ -52,8 +55,10 @@ fn main() {
     let mut iter = 0;
     loop {
         // this conjures a scalar message
+        #[cfg(feature="hwsim")]
         core_csr.wfo(utra::main::REPORT_REPORT, 0x1111_0000 + iter);
         let now = tt.elapsed_ms();
+        #[cfg(feature="hwsim")]
         core_csr.wfo(utra::main::REPORT_REPORT, 0x2222_0000 + iter);
         total += now;
         if iter > 0x20 && iter < 0x30 {
@@ -64,14 +69,19 @@ fn main() {
             break;
         }
         // something lame to just conjure a memory message
+        #[cfg(feature="hwsim")]
         core_csr.wfo(utra::main::REPORT_REPORT, 0x3333_0000 + iter);
         let version = tt.get_version();
+        #[cfg(feature="hwsim")]
         core_csr.wfo(utra::main::REPORT_REPORT, 0x4444_0000 + iter);
         total += version.len() as u64;
         iter += 1;
+        #[cfg(feature="hwsim")]
         core_csr.wfo(utra::main::REPORT_REPORT, total as u32);
     }
+    #[cfg(feature="hwsim")]
     core_csr.wfo(utra::main::REPORT_REPORT, 0x600d_c0de);
     println!("Elapsed: {}", total);
+    #[cfg(feature="hwsim")]
     core_csr.wfo(utra::main::REPORT_REPORT, 0x6969_6969);
 }
