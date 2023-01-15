@@ -685,6 +685,9 @@ impl Builder {
                 args.push(s);
             }
         }
+        // insert the core complex SVD file
+        args.push("--core-svd");
+        args.push("precursors/core.svd");
 
         let status = Command::new(cargo())
             .current_dir(project_root())

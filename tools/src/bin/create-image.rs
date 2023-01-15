@@ -103,9 +103,16 @@ fn main() {
                 .short("s")
                 .long("svd")
                 .value_name("SOC_SVD")
-                .help("soc.csv file from litex")
+                .help("soc.svd file from litex (system-level)")
                 .takes_value(true)
                 .required_unless_one(&["ram", "svd", "csv"]),
+        )
+        .arg(
+            Arg::with_name("core-svd")
+                .long("core-svd")
+                .value_name("CORE_SVD")
+                .help("core.svd file from litex (core-level)")
+                .takes_value(true)
         )
         .arg(
             Arg::with_name("ram")
@@ -214,6 +221,50 @@ fn main() {
                 );
             }
         }
+        // insert additional regions from core.svd, if specified
+        if let Some(soc_svd) = matches.value_of("core-svd") {
+            let soc_svd_file = std::fs::File::open(soc_svd).unwrap();
+            let desc = svd2utra::parse_svd(soc_svd_file).unwrap();
+
+            let mut csr_top = 0;
+            for peripheral in desc.peripherals {
+                if peripheral.base > csr_top {
+                    csr_top = peripheral.base;
+                }
+            }
+            for region in desc.memory_regions {
+                // Ignore the "CSR" region and manually reconstruct it, because this
+                // region is largely empty and we want to avoid allocating too much space.
+                if region.name == "CSR" {
+                    const PAGE_SIZE: usize = 4096;
+                    // round to the nearest page, then add one page as the last entry in the csr_top
+                    // is an alloatable page, and not an end-stop.
+                    let length = if csr_top - region.base & (PAGE_SIZE - 1) == 0 {
+                        csr_top - region.base
+                    } else {
+                        ((csr_top - region.base) & !(PAGE_SIZE - 1)) + PAGE_SIZE
+                    } + PAGE_SIZE;
+                    map.insert(
+                        "corecsr".to_string(),
+                        tools::utils::CsrMemoryRegion {
+                            start: region.base.try_into().unwrap(),
+                            length: length
+                                .try_into()
+                                .unwrap(),
+                        },
+                    );
+                } else {
+                    map.insert(
+                        region.name.to_lowercase(),
+                        tools::utils::CsrMemoryRegion {
+                            start: region.base.try_into().unwrap(),
+                            length: region.size.try_into().unwrap(),
+                        },
+                    );
+                }
+            }
+        }
+
         csr_to_config(tools::utils::CsrConfig { regions: map }, &mut ram_config);
     }
 
