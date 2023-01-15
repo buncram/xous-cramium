@@ -24,7 +24,8 @@ utralib = {version = "0.1.13", optional = true, default-features = false }
 [target.'cfg(any(windows,unix))'.dependencies]
 
 [features]
-precursor = ["utralib/cramium"]
+cramium = ["utralib/cramium"]
+precursor = ["utralib/precursor"]
 hosted = ["utralib/hosted"]
 renode = ["utralib/renode"]
 debugprint = []

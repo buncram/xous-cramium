@@ -206,7 +206,10 @@ dependencies = [
 name = "console"
 version = "0.1.0"
 dependencies = [
+ "log",
  "utralib",
+ "xous 0.9.30",
+ "xous-api-log",
  "xous-api-names",
  "xous-api-ticktimer",
 ]

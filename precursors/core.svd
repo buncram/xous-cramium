@@ -3,7 +3,7 @@
 <device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD.xsd" >
     <vendor>litex</vendor>
     <name>SOC</name>
-    <description><![CDATA[Litex SoC 2023-01-13 01:59:49]]></description>
+    <description><![CDATA[Litex SoC 2023-01-15 23:47:38]]></description>
 
     <addressUnitBits>8</addressUnitBits>
     <width>32</width>
@@ -14,8 +14,260 @@
 
     <peripherals>
         <peripheral>
-            <name>COREUSER</name>
+            <name>D11CTIME</name>
             <baseAddress>0x58000000</baseAddress>
+            <groupName>D11CTIME</groupName>
+            <registers>
+                <register>
+                    <name>CONTROL</name>
+                    <addressOffset>0x0000</addressOffset>
+                    <resetValue>0x666</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>count</name>
+                            <msb>31</msb>
+                            <bitRange>[31:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[Number of ACLK ticks before creating a heart beat]]></description>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>HEARTBEAT</name>
+                    <addressOffset>0x0004</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>beat</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[Set to `1` at the next `count` interval rollover since `clear` was set.]]></description>
+                        </field>
+                    </fields>
+                </register>
+            </registers>
+            <addressBlock>
+                <offset>0</offset>
+                <size>0x8</size>
+                <usage>registers</usage>
+            </addressBlock>
+        </peripheral>
+        <peripheral>
+            <name>SUSRES</name>
+            <baseAddress>0x58001000</baseAddress>
+            <groupName>SUSRES</groupName>
+            <registers>
+                <register>
+                    <name>CONTROL</name>
+                    <addressOffset>0x0000</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>pause</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[Write a `1` to this field to request a pause to counting, 0 for free-run. Count
+pauses on the next tick quanta.]]></description>
+                        </field>
+                        <field>
+                            <name>load</name>
+                            <msb>1</msb>
+                            <bitRange>[1:1]</bitRange>
+                            <lsb>1</lsb>
+                            <description><![CDATA[If paused, write a `1` to this bit to load a resume value to the timer. If not
+paused, this bit is ignored.]]></description>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>RESUME_TIME1</name>
+                    <description><![CDATA[Bits 32-63 of `SUSRES_RESUME_TIME`. Elapsed time to load. Loaded upon writing
+`1` to the load bit in the control register. This will immediately affect the
+msleep extension.]]></description>
+                    <addressOffset>0x0004</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>resume_time</name>
+                            <msb>31</msb>
+                            <bitRange>[31:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>RESUME_TIME0</name>
+                    <description><![CDATA[Bits 0-31 of `SUSRES_RESUME_TIME`.]]></description>
+                    <addressOffset>0x0008</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>resume_time</name>
+                            <msb>31</msb>
+                            <bitRange>[31:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>TIME1</name>
+                    <description><![CDATA[Bits 32-63 of `SUSRES_TIME`. Cycle-accurate mirror copy of time in systicks,
+from the TickTimer]]></description>
+                    <addressOffset>0x000c</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>time</name>
+                            <msb>31</msb>
+                            <bitRange>[31:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>TIME0</name>
+                    <description><![CDATA[Bits 0-31 of `SUSRES_TIME`.]]></description>
+                    <addressOffset>0x0010</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>time</name>
+                            <msb>31</msb>
+                            <bitRange>[31:0]</bitRange>
+                            <lsb>0</lsb>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>STATUS</name>
+                    <addressOffset>0x0014</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>paused</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[When set, indicates that the counter has been paused]]></description>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>STATE</name>
+                    <addressOffset>0x0018</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>resume</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[Used to transfer the resume state information from the loader to Xous. If set,
+indicates we are on the resume half of a suspend/resume.]]></description>
+                        </field>
+                        <field>
+                            <name>was_forced</name>
+                            <msb>1</msb>
+                            <bitRange>[1:1]</bitRange>
+                            <lsb>1</lsb>
+                            <description><![CDATA[Used by the bootloader to indicate to the kernel if the current resume was from
+a forced suspend (e.g. a timeout happened and a server may be unclean.]]></description>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>INTERRUPT</name>
+                    <addressOffset>0x001c</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>interrupt</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[Writing this causes an interrupt to fire. Used by Xous to initiate
+suspend/resume from an interrupt context.]]></description>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>EV_STATUS</name>
+                    <description><![CDATA[This register contains the current raw level of the soft_int event trigger.
+Writes to this register have no effect.]]></description>
+                    <addressOffset>0x0020</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>soft_int</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[Level of the ``soft_int`` event]]></description>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>EV_PENDING</name>
+                    <description><![CDATA[When a  soft_int event occurs, the corresponding bit will be set in this
+register.  To clear the Event, set the corresponding bit in this register.]]></description>
+                    <addressOffset>0x0024</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>soft_int</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[`1` if a `soft_int` event occurred. This Event is triggered on a **falling**
+edge.]]></description>
+                        </field>
+                    </fields>
+                </register>
+                <register>
+                    <name>EV_ENABLE</name>
+                    <description><![CDATA[This register enables the corresponding soft_int events.  Write a ``0`` to this
+register to disable individual events.]]></description>
+                    <addressOffset>0x0028</addressOffset>
+                    <resetValue>0x00</resetValue>
+                    <size>32</size>
+                    <fields>
+                        <field>
+                            <name>soft_int</name>
+                            <msb>0</msb>
+                            <bitRange>[0:0]</bitRange>
+                            <lsb>0</lsb>
+                            <description><![CDATA[Write a ``1`` to enable the ``soft_int`` Event]]></description>
+                        </field>
+                    </fields>
+                </register>
+            </registers>
+            <addressBlock>
+                <offset>0</offset>
+                <size>0x2c</size>
+                <usage>registers</usage>
+            </addressBlock>
+            <interrupt>
+                <name>susres</name>
+                <value>21</value>
+            </interrupt>
+        </peripheral>
+        <peripheral>
+            <name>COREUSER</name>
+            <baseAddress>0x58002000</baseAddress>
             <groupName>COREUSER</groupName>
             <registers>
                 <register>
@@ -201,7 +453,7 @@ this value (so a value of 255 would match everything from 0 to 255; resulting in
         </peripheral>
         <peripheral>
             <name>CSRTEST</name>
-            <baseAddress>0x58001000</baseAddress>
+            <baseAddress>0x58003000</baseAddress>
             <groupName>CSRTEST</groupName>
             <registers>
                 <register>
@@ -243,7 +495,7 @@ this value (so a value of 255 would match everything from 0 to 255; resulting in
         </peripheral>
         <peripheral>
             <name>IRQARRAY0</name>
-            <baseAddress>0x58002000</baseAddress>
+            <baseAddress>0x58004000</baseAddress>
             <groupName>IRQARRAY0</groupName>
             <registers>
                 <register>
@@ -753,7 +1005,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY1</name>
-            <baseAddress>0x58003000</baseAddress>
+            <baseAddress>0x58005000</baseAddress>
             <groupName>IRQARRAY1</groupName>
             <registers>
                 <register>
@@ -1263,7 +1515,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY10</name>
-            <baseAddress>0x58004000</baseAddress>
+            <baseAddress>0x58006000</baseAddress>
             <groupName>IRQARRAY10</groupName>
             <registers>
                 <register>
@@ -1773,7 +2025,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY11</name>
-            <baseAddress>0x58005000</baseAddress>
+            <baseAddress>0x58007000</baseAddress>
             <groupName>IRQARRAY11</groupName>
             <registers>
                 <register>
@@ -2283,7 +2535,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY12</name>
-            <baseAddress>0x58006000</baseAddress>
+            <baseAddress>0x58008000</baseAddress>
             <groupName>IRQARRAY12</groupName>
             <registers>
                 <register>
@@ -2793,7 +3045,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY13</name>
-            <baseAddress>0x58007000</baseAddress>
+            <baseAddress>0x58009000</baseAddress>
             <groupName>IRQARRAY13</groupName>
             <registers>
                 <register>
@@ -3303,7 +3555,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY14</name>
-            <baseAddress>0x58008000</baseAddress>
+            <baseAddress>0x5800A000</baseAddress>
             <groupName>IRQARRAY14</groupName>
             <registers>
                 <register>
@@ -3813,7 +4065,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY15</name>
-            <baseAddress>0x58009000</baseAddress>
+            <baseAddress>0x5800B000</baseAddress>
             <groupName>IRQARRAY15</groupName>
             <registers>
                 <register>
@@ -4323,7 +4575,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY16</name>
-            <baseAddress>0x5800A000</baseAddress>
+            <baseAddress>0x5800C000</baseAddress>
             <groupName>IRQARRAY16</groupName>
             <registers>
                 <register>
@@ -4833,7 +5085,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY17</name>
-            <baseAddress>0x5800B000</baseAddress>
+            <baseAddress>0x5800D000</baseAddress>
             <groupName>IRQARRAY17</groupName>
             <registers>
                 <register>
@@ -5343,7 +5595,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY18</name>
-            <baseAddress>0x5800C000</baseAddress>
+            <baseAddress>0x5800E000</baseAddress>
             <groupName>IRQARRAY18</groupName>
             <registers>
                 <register>
@@ -5853,7 +6105,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY19</name>
-            <baseAddress>0x5800D000</baseAddress>
+            <baseAddress>0x5800F000</baseAddress>
             <groupName>IRQARRAY19</groupName>
             <registers>
                 <register>
@@ -6363,7 +6615,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY2</name>
-            <baseAddress>0x5800E000</baseAddress>
+            <baseAddress>0x58010000</baseAddress>
             <groupName>IRQARRAY2</groupName>
             <registers>
                 <register>
@@ -6873,7 +7125,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY3</name>
-            <baseAddress>0x5800F000</baseAddress>
+            <baseAddress>0x58011000</baseAddress>
             <groupName>IRQARRAY3</groupName>
             <registers>
                 <register>
@@ -7383,7 +7635,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY4</name>
-            <baseAddress>0x58010000</baseAddress>
+            <baseAddress>0x58012000</baseAddress>
             <groupName>IRQARRAY4</groupName>
             <registers>
                 <register>
@@ -7893,7 +8145,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY5</name>
-            <baseAddress>0x58011000</baseAddress>
+            <baseAddress>0x58013000</baseAddress>
             <groupName>IRQARRAY5</groupName>
             <registers>
                 <register>
@@ -8403,7 +8655,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY6</name>
-            <baseAddress>0x58012000</baseAddress>
+            <baseAddress>0x58014000</baseAddress>
             <groupName>IRQARRAY6</groupName>
             <registers>
                 <register>
@@ -8913,7 +9165,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY7</name>
-            <baseAddress>0x58013000</baseAddress>
+            <baseAddress>0x58015000</baseAddress>
             <groupName>IRQARRAY7</groupName>
             <registers>
                 <register>
@@ -9423,7 +9675,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY8</name>
-            <baseAddress>0x58014000</baseAddress>
+            <baseAddress>0x58016000</baseAddress>
             <groupName>IRQARRAY8</groupName>
             <registers>
                 <register>
@@ -9933,7 +10185,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>IRQARRAY9</name>
-            <baseAddress>0x58015000</baseAddress>
+            <baseAddress>0x58017000</baseAddress>
             <groupName>IRQARRAY9</groupName>
             <registers>
                 <register>
@@ -10443,7 +10695,7 @@ triggering]]></description>
         </peripheral>
         <peripheral>
             <name>MAILBOX</name>
-            <baseAddress>0x58016000</baseAddress>
+            <baseAddress>0x58018000</baseAddress>
             <groupName>MAILBOX</groupName>
             <registers>
                 <register>
@@ -10686,12 +10938,12 @@ packet is done loading. There is no need to clear this register after writing.]]
             </addressBlock>
             <interrupt>
                 <name>mailbox</name>
-                <value>21</value>
+                <value>22</value>
             </interrupt>
         </peripheral>
         <peripheral>
             <name>RESETVALUE</name>
-            <baseAddress>0x58017000</baseAddress>
+            <baseAddress>0x58019000</baseAddress>
             <groupName>RESETVALUE</groupName>
             <registers>
                 <register>
@@ -10718,7 +10970,7 @@ packet is done loading. There is no need to clear this register after writing.]]
         </peripheral>
         <peripheral>
             <name>TICKTIMER</name>
-            <baseAddress>0x58018000</baseAddress>
+            <baseAddress>0x5801A000</baseAddress>
             <groupName>TICKTIMER</groupName>
             <registers>
                 <register>
@@ -10905,7 +11157,8 @@ register to disable individual events.]]></description>
             <constant name="IRQARRAY7_INTERRUPT" value="7" />
             <constant name="IRQARRAY8_INTERRUPT" value="8" />
             <constant name="IRQARRAY9_INTERRUPT" value="9" />
-            <constant name="MAILBOX_INTERRUPT" value="21" />
+            <constant name="MAILBOX_INTERRUPT" value="22" />
+            <constant name="SUSRES_INTERRUPT" value="21" />
             <constant name="TICKTIMER_INTERRUPT" value="20" />
         </constants>
     </vendorExtensions>

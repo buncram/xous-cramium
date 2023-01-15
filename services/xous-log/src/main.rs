@@ -3,7 +3,7 @@
 
 use xous_api_log::api;
 
-#[cfg(any(feature="precursor", feature="renode"))]
+#[cfg(any(feature="precursor", feature = "cramium", feature="renode"))]
 #[macro_use]
 mod debug;
 
@@ -11,7 +11,7 @@ use core::fmt::Write;
 use num_traits::FromPrimitive;
 
 #[cfg(any(not(target_os = "xous"),
-    not(any(feature="precursor", feature="renode", not(target_os = "xous"))) // makes this the default implementation
+    not(any(feature="precursor", feature = "cramium", feature="renode", not(target_os = "xous"))) // makes this the default implementation
 ))]
 mod implementation {
     use core::fmt::{Error, Write};
@@ -112,7 +112,7 @@ mod implementation {
     }
 }
 
-#[cfg(any(feature="precursor", feature="renode"))]
+#[cfg(any(feature="precursor", feature = "cramium", feature="renode"))]
 mod implementation {
     use core::fmt::{Error, Write};
     use utralib::generated::*;
@@ -130,28 +130,30 @@ mod implementation {
             .expect("couldn't map serial port");
             unsafe { crate::debug::DEFAULT_UART_ADDR = uart.as_mut_ptr() as _ };
             println!("Mapped UART @ {:08x}", uart.as_ptr() as usize);
-            let mut uart_csr = CSR::new(uart.as_mut_ptr() as *mut u32);
-
             println!("Process: map success!");
 
-            let inject_mem = xous::syscall::map_memory(
-                xous::MemoryAddress::new(utra::keyinject::HW_KEYINJECT_BASE),
-                None,
-                4096,
-                xous::MemoryFlags::R | xous::MemoryFlags::W,
-            )
-            .expect("couldn't map keyinjection CSR range");
-            println!("Note: character injection via console UART is enabled.");
+            #[cfg(feature="inject")]
+            {
+                let mut uart_csr = CSR::new(uart.as_mut_ptr() as *mut u32);
+                let inject_mem = xous::syscall::map_memory(
+                    xous::MemoryAddress::new(utra::keyinject::HW_KEYINJECT_BASE),
+                    None,
+                    4096,
+                    xous::MemoryFlags::R | xous::MemoryFlags::W,
+                )
+                .expect("couldn't map keyinjection CSR range");
+                println!("Note: character injection via console UART is enabled.");
 
-            println!("Allocating IRQ...");
-            xous::syscall::claim_interrupt(
-                utra::console::CONSOLE_IRQ,
-                handle_console_irq,
-                inject_mem.as_mut_ptr() as *mut usize,
-            )
-            .expect("couldn't claim interrupt");
-            println!("Claimed IRQ {}", utra::console::CONSOLE_IRQ);
-            uart_csr.rmwf(utra::uart::EV_ENABLE_RX, 1);
+                println!("Allocating IRQ...");
+                xous::syscall::claim_interrupt(
+                    utra::console::CONSOLE_IRQ,
+                    handle_console_irq,
+                    inject_mem.as_mut_ptr() as *mut usize,
+                )
+                .expect("couldn't claim interrupt");
+                println!("Claimed IRQ {}", utra::console::CONSOLE_IRQ);
+                uart_csr.rmwf(utra::uart::EV_ENABLE_RX, 1);
+            }
         }
         Output {}
     }
@@ -168,6 +170,7 @@ mod implementation {
         }
     }
 
+    #[cfg(feature="inject")]
     fn handle_console_irq(_irq_no: usize, arg: *mut usize) {
         if cfg!(feature = "logging") {
             let mut inject_csr = CSR::new(arg as *mut u32);
@@ -288,7 +291,7 @@ fn handle_scalar(
         }
         1200 => writeln!(output, "Terminating process").unwrap(),
         2000 => {
-            #[cfg(any(feature="precursor", feature="renode"))]
+            #[cfg(any(feature="precursor", feature = "cramium", feature="renode"))]
             crate::debug::DEFAULT.enable_rx();
             writeln!(output, "Resuming logger").unwrap();
         }
