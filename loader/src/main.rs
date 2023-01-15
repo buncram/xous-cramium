@@ -1223,7 +1223,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
     read_initial_config(&mut cfg);
 
     // check to see if we are recovering from a clean suspend or not
-    let (clean, was_forced_suspend, susres_pid) = check_resume(&mut cfg);
+    let (clean, _was_forced_suspend, susres_pid) = check_resume(&mut cfg);
 
     #[cfg(feature="cramium")]
     {
@@ -1265,7 +1265,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
         // setup the `susres` register for a resume
         let mut resume_csr = CSR::new(utra::susres::HW_SUSRES_BASE as *mut u32);
         // set the resume marker for the SUSRES server, noting the forced suspend status
-        if was_forced_suspend {
+        if _was_forced_suspend {
             resume_csr.wo(utra::susres::STATE,
                 resume_csr.ms(utra::susres::STATE_RESUME, 1) |
                 resume_csr.ms(utra::susres::STATE_WAS_FORCED, 1)

@@ -11,8 +11,13 @@ pub mod syscall;
 
 pub use process::Thread;
 
+#[cfg(feature="precursor")]
 use utralib::generated::*;
+#[cfg(feature="precursor")]
 use xous_kernel::{MemoryFlags, MemoryType, PID};
+#[cfg(feature="cramium")]
+use xous_kernel::PID;
+#[cfg(feature="precursor")]
 use crate::mem::MemoryManager;
 
 #[cfg(feature="precursor")]

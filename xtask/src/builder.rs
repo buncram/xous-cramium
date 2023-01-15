@@ -156,6 +156,7 @@ impl Builder {
     }
 
     /// specify a locale string to override for the current build
+    #[allow(dead_code)]
     pub fn override_locale<'a>(&'a mut self, locale: &str) -> &'a mut Builder {
         self.locale_override = Some(locale.into());
         self
@@ -227,6 +228,7 @@ impl Builder {
         self
     }
     /// Add a list of apps
+    #[allow(dead_code)]
     pub fn add_apps<'a>(&'a mut self, app_list: &Vec::<String>) -> &'a mut Builder {
         for app in app_list {
             self.apps.push(app.as_str().into());
@@ -245,10 +247,12 @@ impl Builder {
         self
     }
     /// test if a feature is present
+    #[allow(dead_code)]
     pub fn has_feature(&self, feature: &str) -> bool {
         self.features.contains(&feature.to_string())
     }
     /// add a feature to be passed on to just the loader
+    #[allow(dead_code)]
     pub fn add_loader_feature<'a>(&'a mut self, feature: &str) -> &'a mut Builder {
         self.loader_features.push(feature.into());
         self

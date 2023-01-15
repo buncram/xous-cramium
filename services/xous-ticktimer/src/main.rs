@@ -709,9 +709,12 @@ fn main() -> ! {
                 }
                 recalculate_sleep(&mut ticktimer, &mut sleep_heap, None);
             }
-            api::Opcode::SuspendResume => xous::msg_scalar_unpack!(msg, token, _, _, _, {
+            api::Opcode::SuspendResume => xous::msg_scalar_unpack!(msg, _token, _, _, _, {
                 ticktimer.suspend();
-                log::warn!("Suspend/resume not supported on this platform!");
+                #[cfg(feature="susres")]
+                susres
+                    .suspend_until_resume(_token)
+                    .expect("couldn't execute suspend/resume");
                 ticktimer.resume();
             }),
             api::Opcode::PingWdt => {

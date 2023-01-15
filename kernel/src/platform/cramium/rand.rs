@@ -2,14 +2,18 @@
 // SPDX-FileCopyrightText: 2022 Foundation Devices, Inc. <hello@foundationdevices.com>
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(not(feature="hwsim"))]
 use crate::mem::MemoryManager;
+#[cfg(not(feature="hwsim"))]
 use utralib::generated::*;
+#[cfg(not(feature="hwsim"))]
 use xous_kernel::{MemoryFlags, MemoryType, PID};
 
 /// The manually chosen virtual address has to be in the top 4MiB as it is the
 /// only page shared among all processes.
 ///
 /// See https://github.com/betrusted-io/xous-core/blob/master/docs/memory.md
+#[cfg(not(feature="hwsim"))]
 pub const TRNG_KERNEL_ADDR: usize = 0xffce_0000;
 #[cfg(not(feature="hwsim"))]
 pub static mut TRNG_KERNEL: Option<TrngKernel> = None;
@@ -62,7 +66,7 @@ impl TrngKernel {
 }
 
 /// Initialize TRNG driver.
-/// 
+///
 /// Needed so that the kernel can allocate names.
 #[cfg(not(feature="hwsim"))]
 pub fn init() {
