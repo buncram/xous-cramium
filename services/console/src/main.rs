@@ -61,13 +61,23 @@ fn main() {
         #[cfg(feature="hwsim")]
         core_csr.wfo(utra::main::REPORT_REPORT, 0x2222_0000 + iter);
         total += now;
-        if iter > 0x20 && iter < 0x30 {
-            tt.sleep_ms(1).unwrap();
-        } else if iter < 0x40 {
+
+        if iter >= 8 && iter < 12 {
+            #[cfg(feature="hwsim")]
+            core_csr.wfo(utra::main::REPORT_REPORT, 0x5133_D001);
             tt.sleep_ms(1).ok();
-        } else if iter > 0x50 {
+        } else if iter >= 12 && iter < 13 {
+            #[cfg(feature="hwsim")]
+            core_csr.wfo(utra::main::REPORT_REPORT, 0x5133_D002);
+            tt.sleep_ms(2).ok();
+        } else if iter >= 13 && iter < 14 {
+            #[cfg(feature="hwsim")]
+            core_csr.wfo(utra::main::REPORT_REPORT, 0x5133_D002);
+            tt.sleep_ms(3).ok();
+        } else if iter >= 14 {
             break;
         }
+
         // something lame to just conjure a memory message
         #[cfg(feature="hwsim")]
         core_csr.wfo(utra::main::REPORT_REPORT, 0x3333_0000 + iter);
@@ -77,11 +87,17 @@ fn main() {
         total += version.len() as u64;
         iter += 1;
         #[cfg(feature="hwsim")]
-        core_csr.wfo(utra::main::REPORT_REPORT, total as u32);
+        core_csr.wfo(utra::main::REPORT_REPORT, now as u32);
     }
     #[cfg(feature="hwsim")]
-    core_csr.wfo(utra::main::REPORT_REPORT, 0x600d_c0de);
+    core_csr.wfo(utra::main::REPORT_REPORT, 0x6969_6969);
     println!("Elapsed: {}", total);
     #[cfg(feature="hwsim")]
-    core_csr.wfo(utra::main::REPORT_REPORT, 0x6969_6969);
+    core_csr.wfo(utra::main::REPORT_REPORT, 0x600d_c0de);
+
+    #[cfg(feature="hwsim")]
+    core_csr.wfo(utra::main::SUCCESS_SUCCESS, 1);
+    tt.sleep_ms(4).ok();
+    #[cfg(feature="hwsim")]
+    core_csr.wfo(utra::main::DONE_DONE, 1); // this should stop the simulation
 }
