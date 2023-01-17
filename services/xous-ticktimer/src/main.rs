@@ -64,6 +64,9 @@ impl core::cmp::PartialEq for TimerRequest {
 
 #[cfg(any(feature = "precursor", feature = "renode", feature = "cramium"))]
 mod implementation {
+    #[cfg(feature="precursor")]
+    const TICKS_PER_MS: u64 = 1;
+    #[cfg(feature="cramium")]
     const TICKS_PER_MS: u64 = 1;
     use super::TimerRequest;
     #[cfg(features="susres")]
