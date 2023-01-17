@@ -3,7 +3,7 @@
 <device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD.xsd" >
     <vendor>litex</vendor>
     <name>SOC</name>
-    <description><![CDATA[Litex SoC 2023-01-16 04:48:05]]></description>
+    <description><![CDATA[Litex SoC 2023-01-18 01:10:01]]></description>
 
     <addressUnitBits>8</addressUnitBits>
     <width>32</width>
@@ -21,7 +21,7 @@
                 <register>
                     <name>CONTROL</name>
                     <addressOffset>0x0000</addressOffset>
-                    <resetValue>0x666</resetValue>
+                    <resetValue>0x61a80</resetValue>
                     <size>32</size>
                     <fields>
                         <field>
@@ -11044,7 +11044,7 @@ other requests.]]></description>
                 </register>
                 <register>
                     <name>MSLEEP_TARGET1</name>
-                    <description><![CDATA[Bits 32-63 of `TICKTIMER_MSLEEP_TARGET`. Target time in 0.5ms ticks]]></description>
+                    <description><![CDATA[Bits 32-63 of `TICKTIMER_MSLEEP_TARGET`. Target time in 1.0ms ticks]]></description>
                     <addressOffset>0x000c</addressOffset>
                     <resetValue>0x00</resetValue>
                     <size>32</size>
@@ -11145,7 +11145,7 @@ register to disable individual events.]]></description>
             </memoryRegion>
         </memoryRegions>
         <constants>
-            <constant name="CONFIG_CLOCK_FREQUENCY" value="50000000" />
+            <constant name="CONFIG_CLOCK_FREQUENCY" value="100000000" />
             <constant name="CONFIG_CPU_HAS_INTERRUPT" value="None" />
             <constant name="CONFIG_CPU_RESET_ADDR" value="1610612736" />
             <constant name="CONFIG_CPU_HAS_DCACHE" value="None" />
