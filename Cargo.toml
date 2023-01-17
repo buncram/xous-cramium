@@ -26,6 +26,7 @@ exclude = [
   "locales",  # exclude because it is machine-generated
   "utralib",
   "xtask",
+  "api/xous-api-ticktimer",
 ]
 
 [profile.release]
@@ -41,3 +42,6 @@ opt-level = "z"  # z,s: Optimize for size instead of performance; 1 for easier d
 path = "./utralib"
 [patch.crates-io.svd2utra]
 path = "./svd2utra"
+
+[patch.crates-io.xous-api-ticktimer]
+path = "./api/xous-api-ticktimer"
