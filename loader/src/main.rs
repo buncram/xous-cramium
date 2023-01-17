@@ -1101,6 +1101,7 @@ pub unsafe extern "C" fn rust_entry(signed_buffer: *const usize, signature: u32)
     // initially validate the whole image on disk (including kernel args)
     // kernel args must be validated because tampering with them can change critical assumptions about
     // how data is loaded into memory
+    #[cfg(not(feature="shortcuts"))]
     if !secboot::validate_xous_img(signed_buffer as *const u32) {
         loop {}
     };
