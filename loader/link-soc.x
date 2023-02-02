@@ -1,7 +1,7 @@
 MEMORY
 {
   /* we are using an unsigned loader, so the offset is not 1k offset */
-  FLASH : ORIGIN = 0x60500000, LENGTH = 16k
+  FLASH : ORIGIN = 0x60000000, LENGTH = 16k
   RAM : ORIGIN = 0x61000000, LENGTH = 16M
   MEMLCD : ORIGIN = 0x42000000, LENGTH = 32k
 }

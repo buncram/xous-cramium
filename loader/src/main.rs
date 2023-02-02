@@ -1116,7 +1116,7 @@ pub unsafe extern "C" fn rust_entry(signed_buffer: *const usize, signature: u32)
     let kab = KernelArguments::new(arg_buffer);
     boot_sequence(kab, signature);
 }
-
+#[cfg(feature="memtest")]
 fn memtest() {
     let ram_ptr: *mut u32 = 0x6100_0000 as *mut u32;
     let sram_ptr: *mut u32 = 0x1000_0000 as *mut u32;
@@ -1211,6 +1211,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
     // Store the initial boot config on the stack.  We don't know
     // where in heap this memory will go.
     #[allow(clippy::cast_ptr_alignment)] // This test only works on 32-bit systems
+    #[cfg(feature="memtest")]
     if false {
         // note: memtest is "destructive" -- can't do a resume after suspend with memtest enabled
         // use this mainly to trace down e.g. hardware issues with timing to the RAM.

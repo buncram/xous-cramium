@@ -22,5 +22,6 @@ debug-print = []
 earlyprintk = []
 renode-bypass = []
 shortcuts = []
+memtest = []
 #default = ["debug-print"]
 default = ["shortcuts"] # turn this off for real hardware, shortcuts are there to speed up simulations
