@@ -30,7 +30,11 @@ fillstack:
     csrw        mtvec, t0
 
     // set location of artifacts in flash
-	lui  a0, 0x60505   	    # form address 0x6050_5000: a0 arg for xous-kernel.bin
+    // it is located at 0x5000 from the beginning of the loader section.
+    la          a0, _start
+    li          t0, 0x5000
+    add         a0, a0, t0
+    // a0 is the final location of the kernel in FLASH
 
     // Start Rust
     j   rust_entry
