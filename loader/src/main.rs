@@ -1208,7 +1208,8 @@ fn memtest() {
 }
 
 fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
-    // test_duart(); // temporary for testing APB integration
+    #[cfg(feature="apb-debug")]
+    test_duart(); // temporary for testing APB integration
 
     // Store the initial boot config on the stack.  We don't know
     // where in heap this memory will go.
@@ -1587,7 +1588,7 @@ pub fn phase_2(cfg: &mut BootConfig) {
     cfg.runtime_page_tracker[cfg.sram_size / PAGE_SIZE - 3] = 0; // allow clean suspend page to be mapped in Xous
 }
 
-/*
+#[cfg(feature="apb-debug")]
 pub mod duart {
     pub const UART_DOUT: utralib::Register = utralib::Register::new(0, 0xff);
     pub const UART_DOUT_DOUT: utralib::Field = utralib::Field::new(8, 0, UART_DOUT);
@@ -1598,9 +1599,11 @@ pub mod duart {
 
     pub const HW_DUART_BASE: usize = 0x4000_1000;
 }
+#[cfg(feature="apb-debug")]
 struct Duart {
     csr: utralib::CSR::<u32>,
 }
+#[cfg(feature="apb-debug")]
 impl Duart {
     pub fn new() -> Self {
         let mut duart_csr = utralib::CSR::new(duart::HW_DUART_BASE as *mut u32);
@@ -1626,10 +1629,11 @@ impl Duart {
         }
     }
 }
+#[cfg(feature="apb-debug")]
 fn test_duart() {
     // println!("Duart test\n");
     let mut duart = Duart::new();
     loop {
         duart.puts("hello world\n");
     }
-} */
+}
