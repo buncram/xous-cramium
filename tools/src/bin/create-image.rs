@@ -9,6 +9,7 @@ use std::fs::File;
 use tools::elf::{read_minielf, read_program};
 use tools::tags::bflg::Bflg;
 use tools::tags::inie::IniE;
+use tools::tags::inif::IniF;
 use tools::tags::memory::{MemoryRegion, MemoryRegions};
 use tools::tags::pnam::ProcessNames;
 use tools::tags::xkrn::XousKernel;
@@ -88,6 +89,15 @@ fn main() {
                 .help("Initial program to load"),
         )
         .arg(
+            Arg::with_name("inif")
+                .short("f")
+                .long("inif")
+                .takes_value(true)
+                .multiple(true)
+                .number_of_values(1)
+                .help("Initial program to load from FLASH"),
+        )
+        .arg(
             Arg::with_name("csv")
                 .short("c")
                 .long("csv")
@@ -136,6 +146,16 @@ fn main() {
                 .required(true)
                 .help("Output file to store tag and init information"),
         )
+        /*
+        .arg(
+            Arg::with_name("Signed image base address")
+                .short("b")
+                .long("base-address")
+                .help("Physical base address of signed image in FLASH")
+                .takes_value(true)
+                .required(false)
+                .default_value("0x2098_0000") // this is correct for Precursor
+        ) */
         .get_matches();
 
     let mut ram_config = RamConfig {
@@ -278,6 +298,19 @@ fn main() {
         args.add(Bflg::new().debug());
     }
 
+    /*
+    // Setup a simulated boot context, so we can track runtime page allocations
+    // as they happen.
+    let base_addr = if let Some(base_addr_str) = matches.value_of("Signed image base address") {
+        usize::from_str_radix(base_addr_str, 16)?
+    };
+    let mut cfg = tools::xip::BootConfig {
+        base_addr,
+        ..Default::default()
+    };
+    println!("Created BootConfig context: {:?}");
+    */
+
     let kernel = read_program(
         matches
             .value_of("kernel")
@@ -286,8 +319,8 @@ fn main() {
     .expect("unable to read kernel");
 
     process_names.set(1, "kernel");
+    let mut pid = 2;
     if let Some(init_paths) = matches.values_of("init") {
-        let mut pid = 2;
         for init_path in init_paths {
             let program_name = std::path::Path::new(init_path);
             process_names.set(
@@ -301,6 +334,24 @@ fn main() {
             pid += 1;
             let init = read_minielf(init_path).expect("couldn't parse init file");
             args.add(IniE::new(init.entry_point, init.sections, init.program));
+        }
+    }
+
+    if let Some(init_paths) = matches.values_of("inif") {
+        for init_path in init_paths {
+            let program_name = std::path::Path::new(init_path);
+            process_names.set(
+                pid,
+                program_name
+                    .file_stem()
+                    .expect("program had no name")
+                    .to_str()
+                    .expect("program name is not valid utf-8"),
+            );
+            pid += 1;
+            let init = read_minielf(init_path).expect("couldn't parse init file");
+            args.add(IniF::new(init.entry_point, init.sections, init.program, init.alignment_offset));
+            args.set_alignment_offset(init.alignment_offset);
         }
     }
 

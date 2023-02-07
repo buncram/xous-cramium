@@ -6,3 +6,4 @@ pub mod elf;
 pub mod sign_image;
 pub mod tags;
 pub mod utils;
+// pub mod xip;
