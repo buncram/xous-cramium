@@ -113,8 +113,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // ------ Precursor hardware image configs ------
         Some("hw-image") => {
             builder.target_cramium()
-                   .add_services(&user_pkgs.into_iter().map(String::from).collect())
                    .add_services(&get_cratespecs());
+            for service in user_pkgs {
+                builder.add_service(service, true);
+            }
         }
 
         // ---- other single-purpose commands ----
