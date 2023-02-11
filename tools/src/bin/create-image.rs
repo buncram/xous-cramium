@@ -298,19 +298,6 @@ fn main() {
         args.add(Bflg::new().debug());
     }
 
-    /*
-    // Setup a simulated boot context, so we can track runtime page allocations
-    // as they happen.
-    let base_addr = if let Some(base_addr_str) = matches.value_of("Signed image base address") {
-        usize::from_str_radix(base_addr_str, 16)?
-    };
-    let mut cfg = tools::xip::BootConfig {
-        base_addr,
-        ..Default::default()
-    };
-    println!("Created BootConfig context: {:?}");
-    */
-
     let kernel = read_program(
         matches
             .value_of("kernel")
