@@ -114,9 +114,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("hw-image") => {
             builder.target_cramium()
                    .add_services(&get_cratespecs());
+            /*
             for service in user_pkgs {
                 builder.add_service(service, true);
             }
+            */
+            builder.add_service("xous-log", true);
+            builder.add_service("xous-names", true);
+            builder.add_service("xous-ticktimer", true);
+            builder.add_service("console", true);
+            builder.add_service("./com", true);
         }
 
         // ---- other single-purpose commands ----
