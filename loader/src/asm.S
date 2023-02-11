@@ -30,9 +30,9 @@ fillstack:
     csrw        mtvec, t0
 
     // set location of artifacts in flash
-    // it is located at 0x5000 from the beginning of the loader section.
+    // it is located at 0x9000 from the beginning of the loader section.
     la          a0, _start
-    li          t0, 0x5000
+    li          t0, 0x9000
     add         a0, a0, t0
     // a0 is the final location of the kernel in FLASH
 
