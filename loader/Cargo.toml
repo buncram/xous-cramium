@@ -25,4 +25,4 @@ shortcuts = []
 memtest = []
 #default = ["debug-print"]
 apb-debug = []
-default = ["shortcuts"] # turn this off for real hardware, shortcuts are there to speed up simulations
+default = ["shortcuts", "debug-print"] # turn this off for real hardware, shortcuts are there to speed up simulations
