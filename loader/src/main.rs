@@ -470,7 +470,7 @@ impl MiniElf {
         }
     }
 }
-
+#[cfg(feature="debug-print")]
 fn dump_addr(addr: usize, label: &str) {
     print!("{}", label);
     let slice = unsafe{core::slice::from_raw_parts(addr as *const u8, 20)};
@@ -479,6 +479,7 @@ fn dump_addr(addr: usize, label: &str) {
     }
     print!("\n");
 }
+#[cfg(feature="debug-print")]
 pub fn pt_walk(root: usize, va: usize) -> Option<usize> {
     let l1_pt = unsafe { &mut (*((root << 12) as *mut PageTable)) };
     let l1_entry = l1_pt.entries[(va & 0xFFC0_0000) >> 22];
@@ -1907,8 +1908,9 @@ impl Duart {
         while self.csr.rf(duart::UART_BUSY_BUSY) != 0 {
             // spin wait
         }
-        // self.csr.wfo(duart::UART_DOUT_DOUT, ch as u32);
-        unsafe {(duart::HW_DUART_BASE as *mut u32).write_volatile(ch as u32) };
+        // the code here bypasses a lot of checks to simulate very fast write cycles so
+        // that the read waitback actually returns something other than not busy.
+        // unsafe {(duart::HW_DUART_BASE as *mut u32).write_volatile(ch as u32) }; // this line really ensures we have to readback something, but it causes double-printing
         while unsafe{(duart::HW_DUART_BASE as *mut u32).add(2).read_volatile()} != 0 {
             // wait
         }
