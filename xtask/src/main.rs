@@ -37,6 +37,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "console",
         ]
     ].concat();
+    let mbox_pkgs = [
+        &base_pkgs_remote[..],
+        &[
+            "mbox1",
+            "mbox2",
+        ]
+    ].concat();
+
 
     // ---- extract position independent args ----
     let lkey = get_flag("--lkey")?;
@@ -124,6 +132,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             builder.add_service("console", true);
             */
             // builder.add_service("./com", true);
+        }
+        Some("mbox-image") => {
+            builder.target_cramium()
+                   .add_services(&get_cratespecs());
+            for service in mbox_pkgs {
+                builder.add_service(service, true);
+            }
         }
 
         // ---- other single-purpose commands ----
