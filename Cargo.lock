@@ -539,6 +539,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "mbox1"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "num-derive",
+ "num-traits",
+ "utralib",
+ "xous 0.9.30",
+ "xous-api-log",
+ "xous-api-names",
+ "xous-api-ticktimer",
+]
+
+[[package]]
+name = "mbox2"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "num-derive",
+ "num-traits",
+ "utralib",
+ "xous 0.9.30",
+ "xous-api-log",
+ "xous-api-names",
+ "xous-api-ticktimer",
+]
+
+[[package]]
 name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
