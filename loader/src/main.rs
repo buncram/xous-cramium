@@ -42,6 +42,10 @@ const MINIELF_FLG_W: u8 = 1;
 const MINIELF_FLG_NC: u8 = 2;
 #[allow(dead_code)]
 const MINIELF_FLG_X: u8 = 4;
+#[allow(dead_code)]
+const MINIELF_FLG_EHF: u8 = 8;
+#[allow(dead_code)]
+const MINIELF_FLG_EHH: u8 = 0x10;
 
 const VDBG: bool = false; // verbose debug
 const VVDBG: bool = false; // very verbose debug
@@ -696,7 +700,6 @@ where
     }
 }
 
-/// Copy _count_ **bytes** from src to dest.
 unsafe fn memcpy<T>(dest: *mut T, src: *const T, count: usize)
 where
     T: Copy,
@@ -1538,6 +1541,8 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
         clear_ram(&mut cfg);
         phase_1(&mut cfg);
         phase_2(&mut cfg);
+        #[cfg(feature="debug-print")]
+        if VDBG { check_load(&mut cfg); }
         println!("done initializing for cold boot.");
     } else {
         // resume path
