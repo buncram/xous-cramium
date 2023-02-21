@@ -5,10 +5,14 @@
 mod args;
 use args::{KernelArgument, KernelArguments};
 
+#[cfg(feature="resume")]
 mod murmur3;
+mod platform;
+pub const BACKUP_ARGS_ADDR: usize = crate::platform::RAM_BASE + crate::platform::RAM_SIZE - 0x2000;
 
 use core::num::NonZeroUsize;
 use core::{mem, ptr, slice};
+use core::arch::asm;
 
 pub type XousPid = u8;
 pub const PAGE_SIZE: usize = 4096;
@@ -27,6 +31,8 @@ const KERNEL_LOAD_OFFSET: usize = 0xffd0_0000;
 const KERNEL_STACK_PAGE_COUNT: usize = 1;
 const KERNEL_ARGUMENT_OFFSET: usize = 0xffc0_0000;
 const GUARD_MEMORY_BYTES: usize = 2 * PAGE_SIZE;
+
+pub const SIGBLOCK_SIZE: usize = 0x1000;
 
 const FLG_VALID: usize = 0x1;
 const FLG_X: usize = 0x8;
@@ -53,9 +59,8 @@ const VVDBG: bool = false; // very verbose debug
 mod debug;
 
 mod fonts;
-
+#[cfg(feature="secboot")]
 mod secboot;
-use secboot::SIGBLOCK_SIZE;
 
 // Install a panic handler when not running tests.
 #[cfg(not(test))]
@@ -530,19 +535,126 @@ pub struct ProgramDescription {
     entrypoint: u32,
 }
 
-extern "C" {
-    fn start_kernel(
-        args: usize,
-        ss: usize,
-        rpt: usize,
-        satp: usize,
-        entrypoint: usize,
-        stack: usize,
-        debug: bool,
-        resume: bool,
-    ) -> !;
+// Note: inline constants are not yet stable in Rust: https://github.com/rust-lang/rust/pull/104087
+#[link_section = ".text.init"]
+#[export_name = "_start"]
+pub extern "C" fn _start(_kernel_args: usize, loader_sig: usize) {
+    #[cfg(feature="precursor")]
+    let _kernel_args = _kernel_args;
+    #[cfg(feature="cramium")]
+    let _kernel_args = _start as *const usize as usize + platform::KERNEL_OFFSET;
+    unsafe {
+        asm! (
+            "li          t0, 0xffffffff",
+            "csrw        mideleg, t0",
+            "csrw        medeleg, t0",
+
+            // decorate our stack area with a canary pattern
+            "li          t1, 0xACE0BACE",
+            "mv          t0, {stack_limit}",
+            "mv          t2, {ram_top}",
+        "100:", // fillstack
+            "sw          t1, 0(t0)",
+            "addi        t0, t0, 4",
+            "bltu        t0, t2, 100b",
+
+            // Place the stack pointer at the end of RAM
+            "mv          sp, {ram_top}",
+
+            // Install a machine mode trap handler
+            "la          t0, abort",
+            "csrw        mtvec, t0",
+
+            // this forces a0/a1 to be "used" and thus not allocated for other parameters passed in
+            "mv          a0, {kernel_args}",
+            "mv          a1, {loader_sig}",
+            // Start Rust
+            "j   rust_entry",
+
+            kernel_args = in(reg) _kernel_args,
+            loader_sig = in(reg) loader_sig,
+            ram_top = in(reg) (platform::RAM_BASE + platform::RAM_SIZE),
+            // On Precursor - 0x40FFE01C: currently allowed stack extent - 8k - (7 words). 7 words are for kernel backup args - see bootloader in betrusted-soc
+            stack_limit = in(reg) (platform::RAM_BASE + platform::RAM_SIZE - 8192 + 7 * core::mem::size_of::<usize>()),
+            options(noreturn)
+        );
+    }
 }
 
+#[link_section = ".text.init"]
+#[export_name = "abort"]
+/// This is only used in debug mode
+pub extern "C" fn abort() {
+    unsafe {
+        asm! (
+            "300:", // abort
+                "j 300b",
+            options(noreturn)
+        );
+    }
+}
+
+#[inline(never)]
+#[export_name = "start_kernel"]
+pub extern "C" fn start_kernel(
+    args: usize,
+    ss: usize,
+    rpt: usize,
+    satp: usize,
+    entrypoint: usize,
+    stack: usize,
+    debug_: bool,
+    resume_: bool,
+) -> ! {
+    let debug: usize = if debug_ { 1 } else { 0 };
+    let resume: usize = if resume_ { 1 } else { 0 };
+    unsafe {
+        asm! (
+            // these generate redundant mv's but it ensures that the arguments are marked as used
+            "mv          a0, {args}",
+            "mv          a1, {ss}",
+            "mv          a2, {rpt}",
+            "mv          a7, {resume}",
+            // Delegate as much as we can supervisor mode
+            "li          t0, 0xffffffff",
+            "csrw        mideleg, t0",
+            "csrw        medeleg, t0",
+
+            // Return to Supervisor mode (1 << 11) when we call `reti`.
+            // Disable interrupts (0 << 5)
+            "li		     t0, (1 << 11) | (0 << 5)",
+            // If arg6 is "true", also set mstatus.SUM to allow the kernel
+            // to access userspace memory.
+            "mv          a6, {debug}",
+            "andi        a6, a6, 1",
+            "slli        a6, a6, 18",
+            "or          t0, t0, a6",
+            "csrw	     mstatus, t0",
+
+            // Enable the MMU (once we issue `mret`) and flush the cache
+            "csrw        satp, {satp}",
+            "sfence.vma",
+
+            // Return to the address pointed to by $a4
+            "csrw        mepc, {entrypoint}",
+
+            // Reposition the stack at the offset passed by $a5
+            "mv          sp, {stack}",
+
+            // Issue the return, which will jump to $mepc in Supervisor mode
+            "mret",
+            args = in(reg) args,
+            ss = in(reg) ss,
+            rpt = in(reg) rpt,
+            satp = in(reg) satp,
+            entrypoint = in(reg) entrypoint,
+            stack = in(reg) stack,
+            debug = in(reg) debug,
+            resume = in(reg) resume,
+            options(noreturn)
+        );
+    }
+}
 
 impl ProgramDescription {
     /// Map this ProgramDescription into RAM.
@@ -1394,7 +1506,7 @@ pub unsafe extern "C" fn rust_entry(signed_buffer: *const usize, signature: u32)
     // initially validate the whole image on disk (including kernel args)
     // kernel args must be validated because tampering with them can change critical assumptions about
     // how data is loaded into memory
-    #[cfg(not(feature="shortcuts"))]
+    #[cfg(feature="secboot")]
     if !secboot::validate_xous_img(signed_buffer as *const u32) {
         loop {}
     };
@@ -1409,110 +1521,15 @@ pub unsafe extern "C" fn rust_entry(signed_buffer: *const usize, signature: u32)
     let kab = KernelArguments::new(arg_buffer);
     boot_sequence(kab, signature);
 }
-#[cfg(feature="memtest")]
-fn memtest() {
-    let ram_ptr: *mut u32 = 0x6100_0000 as *mut u32;
-    let sram_ptr: *mut u32 = 0x1000_0000 as *mut u32;
-    use utralib::generated::*;
 
-    let mut sram_csr = CSR::new(utra::sram_ext::HW_SRAM_EXT_BASE as *mut u32);
-    sram_csr.wfo(utra::sram_ext::READ_CONFIG_TRIGGER, 1);
-
-    // give some time for the status to read
-    for i in 0..8 {
-        unsafe { sram_ptr.add(i).write_volatile(i as u32) };
-    }
-
-    println!("status: 0x{:08x}", sram_csr.rf(utra::sram_ext::CONFIG_STATUS_MODE));
-
-    for i in 0..(256*1024/4) {
-        unsafe {
-            ram_ptr.add(i).write_volatile( (0xACE0_0000 + i) as u32 );
-        }
-    }
-
-    let mut errcnt = 0;
-    for i in 0..(256*1024/4) {
-        unsafe {
-            let rd = ram_ptr.add(i).read_volatile();
-            if rd != (0xACE0_0000 + i) as u32 {
-                if errcnt < 16 || ((errcnt % 256) == 0) {
-                    println!("* 0x{:08x}: e:0x{:08x} o:0x{:08x}", i*4, 0xACE0_0000 + i, rd);
-                }
-                errcnt += 1;
-            } else if (i & 0x1FFF) == 8 {
-                println!("  0x{:08x}: e:0x{:08x} o:0x{:08x}", i*4, 0xACE0_0000 + i, rd);
-            };
-        }
-    }
-    // TRNG virtual memory mapping already set up, but we pump values out just to make sure
-    // the pipeline is fresh. Simulations show this isn't necessary, but I feel paranoid;
-    // I worry a subtle bug in the reset logic could leave deterministic values in the pipeline.
-    for _k in 0..8 {
-        let trng_csr = CSR::new(utra::trng_kernel::HW_TRNG_KERNEL_BASE as *mut u32);
-        for i in 0x3E_0000..0x3F_0000 {
-            while trng_csr.rf(utra::trng_kernel::URANDOM_VALID_URANDOM_VALID) == 0 {}
-            unsafe {
-                ram_ptr.add(i).write_volatile(trng_csr.rf(utra::trng_kernel::URANDOM_URANDOM));
-            }
-        }
-        for i in 0x3D_0000..0x3E_0000 {
-            unsafe {
-                ram_ptr.add(i).write_volatile(ram_ptr.add(i + 0x10000).read_volatile());
-            }
-        }
-        let basecnt = errcnt;
-        println!("** take one **");
-        for i in 0x3D_0000..0x3E_0000 {
-            let rd1 = unsafe{ram_ptr.add(i).read_volatile()};
-            let rd2 = unsafe{ram_ptr.add(i+0x10000).read_volatile()};
-            if rd1 != rd2 {
-                if errcnt < 16 + basecnt || ((errcnt % 256) == 0) {
-                    println!("* 0x{:08x}: rd1:0x{:08x} rd2:0x{:08x}", i*4, rd1, rd2);
-                }
-                errcnt += 1;
-            } else if (i & 0x1FFF) == 12 {
-                println!("  0x{:08x}: rd1:0x{:08x} rd2:0x{:08x}", i*4, rd1, rd2);
-            }
-        }
-        println!("** take two (check for read errors)**");
-        let basecnt = errcnt;
-        for i in 0x3D_0000..0x3E_0000 {
-            let rd1 = unsafe{ram_ptr.add(i).read_volatile()};
-            let rd2 = unsafe{ram_ptr.add(i+0x10000).read_volatile()};
-            if rd1 != rd2 {
-                if errcnt < 16 + basecnt || ((errcnt % 256) == 0) {
-                    println!("* 0x{:08x}: rd1:0x{:08x} rd2:0x{:08x}", i*4, rd1, rd2);
-                }
-                errcnt += 1;
-            } else if (i & 0x1FFF) == 12 {
-                println!("  0x{:08x}: rd1:0x{:08x} rd2:0x{:08x}", i*4, rd1, rd2);
-            }
-        }
-    }
-
-    if errcnt != 0 {
-        println!("error count: {}", errcnt);
-        println!("0x01000: {:08x}", unsafe{ ram_ptr.add(0x1000/4).read_volatile() });
-        println!("0x00000: {:08x}", unsafe{ ram_ptr.add(0x0).read_volatile() });
-        println!("0x0FFFC: {:08x}", unsafe{ ram_ptr.add(0xFFFC/4).read_volatile() });
-        println!("0xfdff04: {:08x}", unsafe{ ram_ptr.add(0xfdff04/4).read_volatile() });
-    }
-}
 
 fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
-    #[cfg(feature="apb-debug")]
-    test_duart(); // temporary for testing APB integration
-
     // Store the initial boot config on the stack.  We don't know
     // where in heap this memory will go.
     #[allow(clippy::cast_ptr_alignment)] // This test only works on 32-bit systems
-    #[cfg(feature="memtest")]
-    if false {
-        // note: memtest is "destructive" -- can't do a resume after suspend with memtest enabled
-        // use this mainly to trace down e.g. hardware issues with timing to the RAM.
-        memtest();
-    }
+    #[cfg(feature="platform-tests")]
+    platform_tests();
+
     let mut cfg = BootConfig {
         base_addr: args.base as *const usize,
         args,
@@ -1521,23 +1538,27 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
     read_initial_config(&mut cfg);
 
     // check to see if we are recovering from a clean suspend or not
-    let (clean, _was_forced_suspend, susres_pid) = check_resume(&mut cfg);
-
-    #[cfg(feature="cramium")]
-    {
-        // cold boot path only
-        println!("WARNING: RAM is not cleared");
-        // clear_ram(&mut cfg);
+    #[cfg(feature="resume")]
+    let (clean, was_forced_suspend, susres_pid) = check_resume(&mut cfg);
+    #[cfg(not(feature="resume"))]
+    let clean = {
+        // cold boot path
+        println!("No suspend marker found, doing a cold boot!");
+        #[cfg(feature="simulation-only")]
+        println!("Configured for simulation. Skipping RAM clear!");
+        #[cfg(not(feature="simulation-only"))]
+        clear_ram(&mut cfg);
         phase_1(&mut cfg);
         phase_2(&mut cfg);
         #[cfg(feature="debug-print")]
         if VDBG { check_load(&mut cfg); }
         println!("done initializing for cold boot.");
-    }
-    #[cfg(feature="precursor")]
+        false
+    };
+    #[cfg(feature="resume")]
     if !clean {
         // cold boot path
-        println!("no suspend marker found, doing a cold boot!");
+        println!("No suspend marker found, doing a cold boot!");
         clear_ram(&mut cfg);
         phase_1(&mut cfg);
         phase_2(&mut cfg);
@@ -1567,7 +1588,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
         // setup the `susres` register for a resume
         let mut resume_csr = CSR::new(utra::susres::HW_SUSRES_BASE as *mut u32);
         // set the resume marker for the SUSRES server, noting the forced suspend status
-        if _was_forced_suspend {
+        if was_forced_suspend {
             resume_csr.wo(utra::susres::STATE,
                 resume_csr.ms(utra::susres::STATE_RESUME, 1) |
                 resume_csr.ms(utra::susres::STATE_WAS_FORCED, 1)
@@ -1606,7 +1627,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
         // so that attempts to mess with the args during a resume can't lead to overwriting
         // critical parameters like these kernel arguments.
         unsafe {
-            let backup_args: *mut [u32; 7] = 0x61FF_E000 as *mut[u32; 7];
+            let backup_args: *mut [u32; 7] = BACKUP_ARGS_ADDR as *mut[u32; 7];
             (*backup_args)[0] = arg_offset as u32;
             (*backup_args)[1] = ip_offset as u32;
             (*backup_args)[2] = rpt_offset as u32;
@@ -1628,21 +1649,20 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
         let mut gpio_csr = CSR::new(utra::gpio::HW_GPIO_BASE as *mut u32);
         gpio_csr.wfo(utra::gpio::UARTSEL_UARTSEL, 1); // patch us over to a different UART for debug (1=LOG 2=APP, 0=KERNEL(hw reset default))
 
-        unsafe {
-            start_kernel(
-                arg_offset,
-                ip_offset,
-                rpt_offset,
-                cfg.processes[0].satp,
-                cfg.processes[0].entrypoint,
-                cfg.processes[0].sp,
-                cfg.debug,
-                clean,
-            );
-        }
+        start_kernel(
+            arg_offset,
+            ip_offset,
+            rpt_offset,
+            cfg.processes[0].satp,
+            cfg.processes[0].entrypoint,
+            cfg.processes[0].sp,
+            cfg.debug,
+            clean,
+        );
     } else {
+        #[cfg(feature="resume")]
         unsafe {
-            let backup_args: *mut [u32; 7] = 0x61FF_E000 as *mut[u32; 7];
+            let backup_args: *mut [u32; 7] = BACKUP_ARGS_ADDR as *mut[u32; 7];
             #[cfg(feature="debug-print")]
             {
                 println!("Using backed up kernel args:");
@@ -1655,7 +1675,7 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
             println!("Adjusting SATP to the sures process. Was: 0x{:08x} now: 0x{:08x}", (*backup_args)[3], satp);
 
             #[cfg(not(feature = "renode-bypass"))]
-            if true {
+            {
                 use utralib::generated::*;
                 let mut gpio_csr = CSR::new(utra::gpio::HW_GPIO_BASE as *mut u32);
                 gpio_csr.wfo(utra::gpio::UARTSEL_UARTSEL, 0); // patch us over to a different UART for debug (1=LOG 2=APP, 0=KERNEL(default))
@@ -1672,11 +1692,12 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
                 clean,
             );
         }
+        #[cfg(not(feature="resume"))]
+        panic!("Unreachable code executed");
     }
 }
-
+#[cfg(feature="resume")]
 fn check_resume(cfg: &mut BootConfig) -> (bool, bool, u32) {
-    #[cfg(not(feature="cramium"))]
     use utralib::generated::*;
     const WORDS_PER_SECTOR: usize = 128;
     const NUM_SECTORS: usize = 8;
@@ -1685,17 +1706,9 @@ fn check_resume(cfg: &mut BootConfig) -> (bool, bool, u32) {
     let suspend_marker = cfg.sram_start as usize + cfg.sram_size - PAGE_SIZE * 3;
     let marker: *mut[u32; WORDS_PER_PAGE] = suspend_marker as *mut[u32; WORDS_PER_PAGE];
 
-    #[cfg(not(feature="cramium"))]
     let boot_seed = CSR::new(utra::seed::HW_SEED_BASE as *mut u32);
-    #[cfg(not(feature="cramium"))]
     let seed0 = boot_seed.r(utra::seed::SEED0);
-    #[cfg(not(feature="cramium"))]
     let seed1 = boot_seed.r(utra::seed::SEED1);
-    #[cfg(feature="cramium")]
-    let seed0 = 0xfeed_face;
-    #[cfg(feature="cramium")]
-    let seed1 = 0x0101_1010;
-
     let was_forced_suspend: bool = if unsafe{(*marker)[0]} != 0 { true } else { false };
 
     let mut clean = true;
@@ -1732,7 +1745,7 @@ fn check_resume(cfg: &mut BootConfig) -> (bool, bool, u32) {
 
 fn clear_ram(cfg: &mut BootConfig) {
     // clear RAM on a cold boot.
-    // RAM is persistent and battery-backed. This means secret material could potentiall
+    // RAM is persistent and battery-backed. This means secret material could potentially
     // stay there forever, if not explicitly cleared. This clear adds a couple seconds
     // to a cold boot, but it's probably worth it. Note that it doesn't happen on a suspend/resume.
     let ram: *mut u32 = cfg.sram_start as *mut u32;
@@ -1883,57 +1896,6 @@ pub fn phase_2(cfg: &mut BootConfig) {
     cfg.runtime_page_tracker[cfg.sram_size / PAGE_SIZE - 1] = 1; // claim the loader stack -- do not allow tampering, as it contains backup kernel args
     cfg.runtime_page_tracker[cfg.sram_size / PAGE_SIZE - 2] = 1; // 8k in total (to allow for digital signatures to be computed)
     cfg.runtime_page_tracker[cfg.sram_size / PAGE_SIZE - 3] = 0; // allow clean suspend page to be mapped in Xous
-}
-
-#[cfg(feature="apb-debug")]
-pub mod duart {
-    pub const UART_DOUT: utralib::Register = utralib::Register::new(0, 0xff);
-    pub const UART_DOUT_DOUT: utralib::Field = utralib::Field::new(8, 0, UART_DOUT);
-    pub const UART_CTL: utralib::Register = utralib::Register::new(1, 1);
-    pub const UART_CTL_EN: utralib::Field = utralib::Field::new(1, 0, UART_CTL);
-    pub const UART_BUSY: utralib::Register = utralib::Register::new(2, 1);
-    pub const UART_BUSY_BUSY: utralib::Field = utralib::Field::new(1, 0, UART_BUSY);
-
-    pub const HW_DUART_BASE: usize = 0x4000_1000;
-}
-#[cfg(feature="apb-debug")]
-struct Duart {
-    csr: utralib::CSR::<u32>,
-}
-#[cfg(feature="apb-debug")]
-impl Duart {
-    pub fn new() -> Self {
-        let mut duart_csr = utralib::CSR::new(duart::HW_DUART_BASE as *mut u32);
-        duart_csr.wfo(duart::UART_CTL_EN, 1);
-        Duart {
-            csr: duart_csr,
-        }
-    }
-    pub fn putc(&mut self, ch: char) {
-        while self.csr.rf(duart::UART_BUSY_BUSY) != 0 {
-            // spin wait
-        }
-        // the code here bypasses a lot of checks to simulate very fast write cycles so
-        // that the read waitback actually returns something other than not busy.
-        // unsafe {(duart::HW_DUART_BASE as *mut u32).write_volatile(ch as u32) }; // this line really ensures we have to readback something, but it causes double-printing
-        while unsafe{(duart::HW_DUART_BASE as *mut u32).add(2).read_volatile()} != 0 {
-            // wait
-        }
-        unsafe {(duart::HW_DUART_BASE as *mut u32).write_volatile(ch as u32) };
-    }
-    pub fn puts(&mut self, s: &str) {
-        for c in s.as_bytes() {
-            self.putc(*c as char);
-        }
-    }
-}
-#[cfg(feature="apb-debug")]
-fn test_duart() {
-    // println!("Duart test\n");
-    let mut duart = Duart::new();
-    loop {
-        duart.puts("hello world\n");
-    }
 }
 
 /// This function allows us to check the final loader results
