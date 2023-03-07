@@ -15,6 +15,7 @@ use xous_kernel::{MemoryFlags, MemoryType};
 ///
 /// See https://github.com/betrusted-io/xous-core/blob/master/docs/memory.md
 pub const UART_ADDR: usize = 0xffcf_0000;
+pub const IRQ0_ADDR: usize = UART_ADDR + 0x1000;
 
 /// UART instance.
 /// 
@@ -24,19 +25,22 @@ pub static mut UART: Option<Uart> = None;
 /// UART peripheral driver.
 pub struct Uart {
     uart_csr: CSR<u32>,
+    irq_csr: CSR<u32>,
     callback: fn(&mut Self),
 }
 
 impl Uart {
-    pub fn new(addr: usize, callback: fn(&mut Self)) -> Uart {
+    pub fn new(addr: usize, irq_addr: usize, callback: fn(&mut Self)) -> Uart {
         Uart {
             uart_csr: CSR::new(addr as *mut u32),
+            irq_csr: CSR::new(irq_addr as *mut u32),
             callback,
         }
     }
 
     pub fn init(&mut self) {
         self.uart_csr.rmwf(utra::uart::EV_ENABLE_RX, 1);
+        self.irq_csr.rmwf(utra::irqarray0::EV_ENABLE_SOURCE0, 1);
     }
 
     pub fn irq(_irq_number: usize, arg: *mut usize) {
@@ -63,6 +67,7 @@ impl SerialRead for Uart {
             _ => {
                 let ret = Some(self.uart_csr.r(utra::uart::RXTX) as u8);
                 self.uart_csr.wfo(utra::uart::EV_PENDING_RX, 1);
+                self.irq_csr.wfo(utra::irqarray0::EV_PENDING_SOURCE0, 1);
                 ret
             }
         }
@@ -84,8 +89,21 @@ pub fn init() {
             )
             .expect("unable to map serial port")
     });
+    // Map the IRQ0 handler
+    MemoryManager::with_mut(|memory_manager| {
+        memory_manager
+            .map_range(
+                utra::irqarray0::HW_IRQARRAY0_BASE as *mut u8,
+                (IRQ0_ADDR & !4095) as *mut u8,
+                4096,
+                PID::new(1).unwrap(),
+                MemoryFlags::R | MemoryFlags::W,
+                MemoryType::Default,
+            )
+            .expect("unable to map serial port")
+    });
 
-    let mut uart = Uart::new(UART_ADDR, process_characters);
+    let mut uart = Uart::new(UART_ADDR, IRQ0_ADDR, process_characters);
     uart.init();
 
     unsafe {

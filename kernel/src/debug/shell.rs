@@ -195,6 +195,7 @@ fn handle_character(b: u8) {
                 });
             });
             println!("{} k total", total_bytes / 1024);
+            println!(".");
         }
         b's' => {
             println!("Servers in use:");

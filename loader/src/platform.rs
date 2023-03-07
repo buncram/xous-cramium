@@ -3,7 +3,7 @@ mod precursor;
 #[cfg(feature="precursor")]
 pub use precursor::*;
 
-#[cfg(feature="cramium")]
+#[cfg(any(feature="cramium-soc", feature="cramium-fpga"))]
 mod cramium;
-#[cfg(feature="cramium")]
+#[cfg(any(feature="cramium-soc", feature="cramium-fpga"))]
 pub use cramium::*;

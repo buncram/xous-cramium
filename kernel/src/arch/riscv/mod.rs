@@ -15,7 +15,7 @@ pub use process::Thread;
 use utralib::generated::*;
 #[cfg(feature="precursor")]
 use xous_kernel::{MemoryFlags, MemoryType, PID};
-#[cfg(feature="cramium")]
+#[cfg(any(feature="cramium-soc", feature="cramium-fpga"))]
 use xous_kernel::PID;
 #[cfg(feature="precursor")]
 use crate::mem::MemoryManager;

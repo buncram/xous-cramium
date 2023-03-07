@@ -3,9 +3,9 @@
 
 #[cfg(any(feature="precursor", feature="renode"))]
 pub mod precursor;
-#[cfg(any(feature="cramium"))]
+#[cfg(any(any(feature="cramium-soc", feature="cramium-fpga")))]
 pub mod cramium;
-#[cfg(any(feature="cramium"))]
+#[cfg(any(any(feature="cramium-soc", feature="cramium-fpga")))]
 pub use cramium::rand;
 
 /// Platform specific initialization.

@@ -129,7 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             builder.add_service("xous-log", true);
             builder.add_service("xous-names", true);
             builder.add_service("xous-ticktimer", true);
-            builder.add_service("console", true);
+            builder.add_service("console", false);
             */
             // builder.add_service("./com", true);
         }

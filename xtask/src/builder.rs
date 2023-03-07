@@ -147,7 +147,7 @@ impl Builder {
             features: Vec::new(),
             stream: BuildStream::Release,
             target: Some(crate::TARGET_TRIPLE.to_string()),
-            utra_target: "cramium".to_string(),
+            utra_target: "cramium-soc".to_string(),
             run_svd2repl: false,
             locale_override: None,
             locale_stash: String::new(),
@@ -219,7 +219,7 @@ impl Builder {
     pub fn target_cramium<'a>(&'a mut self) -> &'a mut Builder {
         self.target = Some(crate::TARGET_TRIPLE.to_string());
         self.stream = BuildStream::Release;
-        self.utra_target = "cramium".to_string();
+        self.utra_target = "cramium-soc".to_string();
         self.run_svd2repl = false;
         self.loader = CrateSpec::Local("loader".to_string(), false);
         self.kernel = CrateSpec::Local("xous-kernel".to_string(), false);
@@ -494,12 +494,12 @@ impl Builder {
             // there is no loader in hosed mode
             self.kernel_features.push("hosted".into());
             None
-        } else if self.utra_target.contains("cramium") {
-            self.features.push("cramium".into());
+        } else if self.utra_target.contains("cramium-soc") {
+            self.features.push("cramium-soc".into());
             self.features.push(format!("utralib/{}", &self.utra_target));
-            self.kernel_features.push("cramium".into());
+            self.kernel_features.push("cramium-soc".into());
             self.kernel_features.push(format!("utralib/{}", &self.utra_target));
-            self.loader_features.push("cramium".into());
+            self.loader_features.push("cramium-soc".into());
             self.loader_features.push(format!("utralib/{}", &self.utra_target));
             Some(crate::TARGET_TRIPLE)
         } else {

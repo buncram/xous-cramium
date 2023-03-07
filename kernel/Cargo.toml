@@ -27,7 +27,8 @@ xous-kernel = { package = "xous", path = "../xous-rs", features = [
 riscv = { version = "0.5.6", package = "xous-riscv" }
 
 [features]
-cramium = ["utralib/cramium"]
+cramium-soc = ["utralib/cramium-soc"]
+cramium-fpga = ["utralib/cramium-fpga"]
 precursor = ["utralib/precursor"]
 hosted = ["utralib/hosted"]
 renode = ["utralib/renode"]

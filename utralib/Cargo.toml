@@ -12,8 +12,9 @@ edition = "2018"
 svd2utra = {path = "../svd2utra"}
 
 [features]
-cramium = []
+cramium-soc = []
+cramium-fpga = []
 hosted = []
 renode = []
 precursor = [] # dummy for kernel feature that is not used
-default = ["cramium"]
+default = ["cramium-soc"]
