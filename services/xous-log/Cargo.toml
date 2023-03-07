@@ -20,7 +20,8 @@ num-traits = {version = "0.2.14", default-features = false}
 utralib = {version = "0.1.13", optional = true, default-features = false }
 
 [features]
-cramium = ["utralib/cramium"]
+cramium-soc = ["utralib/cramium-soc"]
+cramium-fpga = ["utralib/cramium-fpga"]
 precursor = ["utralib/precursor"]
 hosted = ["utralib/hosted"]
 renode = ["utralib/renode"]

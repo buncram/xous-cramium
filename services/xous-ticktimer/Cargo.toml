@@ -23,7 +23,8 @@ xous-semver = "0.1.2"
 utralib = {version = "0.1.13", optional = true, default-features = false }
 
 [features]
-cramium = ["utralib/cramium"]
+cramium-soc = ["utralib/cramium-soc"]
+cramium-fpga = ["utralib/cramium-fpga"]
 precursor = ["utralib/precursor"]
 hosted = ["utralib/hosted"]
 renode = ["utralib/renode"]
@@ -32,6 +33,6 @@ watchdog = []
 timestamp = []
 susres = []
 # you may want to remove the watchdog feature if you're debugging a crash, as it will force the system to reboot automatically
-default = []
+default = ["timestamp"]
 # default = []
 # default = ["debug-print"]
