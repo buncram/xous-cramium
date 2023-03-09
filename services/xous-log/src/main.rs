@@ -3,7 +3,7 @@
 
 use xous_api_log::api;
 
-#[cfg(any(feature="precursor", feature = "cramium", feature="renode"))]
+#[cfg(any(feature="precursor", feature="cramium-fpga", feature="cramium-soc", feature="renode"))]
 #[macro_use]
 mod debug;
 
@@ -11,7 +11,7 @@ use core::fmt::Write;
 use num_traits::FromPrimitive;
 
 #[cfg(any(not(target_os = "xous"),
-    not(any(feature="precursor", feature = "cramium", feature="renode", not(target_os = "xous"))) // makes this the default implementation
+    not(any(feature="precursor", feature="cramium-fpga", feature="cramium-soc", feature="renode", not(target_os = "xous"))) // makes this the default implementation
 ))]
 mod implementation {
     use core::fmt::{Error, Write};
@@ -112,7 +112,7 @@ mod implementation {
     }
 }
 
-#[cfg(any(feature="precursor", feature = "cramium", feature="renode"))]
+#[cfg(any(feature="precursor", feature="cramium-fpga", feature="cramium-soc", feature="renode"))]
 mod implementation {
     use core::fmt::{Error, Write};
     use utralib::generated::*;
@@ -291,7 +291,7 @@ fn handle_scalar(
         }
         1200 => writeln!(output, "Terminating process").unwrap(),
         2000 => {
-            #[cfg(any(feature="precursor", feature = "cramium", feature="renode"))]
+            #[cfg(any(feature="precursor", feature="cramium-fpga", feature="cramium-soc", feature="renode"))]
             crate::debug::DEFAULT.enable_rx();
             writeln!(output, "Resuming logger").unwrap();
         }

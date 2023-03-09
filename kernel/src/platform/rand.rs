@@ -7,7 +7,7 @@ pub fn get_u32() -> u32 {
     let rand = crate::arch::rand::get_u32();
     #[cfg(any(feature="precursor", feature="renode"))]
     let rand = crate::platform::precursor::rand::get_u32();
-    #[cfg(any(feature="cramium"))]
+    #[cfg(any(feature="cramium-fpga", feature="cramium-soc"))]
     let rand = crate::platform::precursor::rand::get_u32();
     rand
 }

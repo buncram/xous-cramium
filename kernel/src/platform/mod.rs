@@ -13,6 +13,6 @@ pub use cramium::rand;
 pub fn init() {
     #[cfg(any(feature="precursor", feature="renode"))]
     self::precursor::init();
-    #[cfg(any(feature="cramium"))]
+    #[cfg(any(feature="cramium-fpga", feature="cramium-soc"))]
     self::cramium::init();
 }

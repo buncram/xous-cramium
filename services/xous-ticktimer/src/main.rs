@@ -62,11 +62,11 @@ impl core::cmp::PartialEq for TimerRequest {
     }
 }
 
-#[cfg(any(feature = "precursor", feature = "renode", feature = "cramium"))]
+#[cfg(any(feature = "precursor", feature = "renode", feature="cramium-fpga", feature="cramium-soc"))]
 mod implementation {
     #[cfg(feature="precursor")]
     const TICKS_PER_MS: u64 = 1;
-    #[cfg(feature="cramium")]
+    #[cfg(any(feature="cramium-fpga", feature="cramium-soc"))]
     const TICKS_PER_MS: u64 = 1;
     use super::TimerRequest;
     #[cfg(features="susres")]
@@ -307,7 +307,7 @@ mod implementation {
 
 #[cfg(any(
     not(target_os = "xous"),
-    not(any(feature = "precursor", feature = "renode", feature = "cramium", not(target_os = "xous")))
+    not(any(feature = "precursor", feature = "renode", feature="cramium-fpga", feature="cramium-soc", not(target_os = "xous")))
 ))]
 mod implementation {
     use crate::RequestKind;
@@ -724,20 +724,27 @@ fn main() -> ! {
                 #[cfg(feature="watchdog")]
                 ticktimer.reset_wdt();
             }
+            /*
             api::Opcode::GetVersion => {
-                let mut buf = unsafe {
-                    xous_ipc::Buffer::from_memory_message_mut(
-                        msg.body.memory_message_mut().unwrap(),
-                    )
-                };
-                #[cfg(feature = "timestamp")]
-                buf.replace(version::get_version()).unwrap();
-                #[cfg(not(feature = "timestamp"))]
-                {
-                    let v = crate::api::VersionString {
-                        version: xous_ipc::String::from_str("--no-timestamp requested for build"),
-                    };
-                    buf.replace(v).unwrap();
+                let raw_msg = msg.body.memory_message_mut().unwrap();
+                let mut v = String::new();
+                v.push_str(crate::version::SEMVER);
+                v.push_str("\n");
+                v.push_str(crate::version::TIMESTAMP);
+                let len = v.as_bytes().len();
+                raw_msg.buf.as_slice_mut()[..len].copy_from_slice(v.as_bytes());
+                raw_msg.valid = Some(core::num::NonZeroUsize::new(len).unwrap());
+            }*/
+            api::Opcode::GetVersion => {
+                let raw_msg = msg.body.memory_message_mut().unwrap();
+                raw_msg.valid = core::num::NonZeroUsize::new(
+                    crate::version::SEMVER.len() + 1 + crate::version::TIMESTAMP.len());
+                let buffer = raw_msg.buf.as_slice_mut();
+                for (dest, src) in buffer.iter_mut()
+                        .zip(crate::version::SEMVER.as_bytes().iter()
+                        .chain([b'\n'].iter())
+                        .chain(crate::version::TIMESTAMP.as_bytes().iter())) {
+                    *dest = *src;
                 }
             }
             api::Opcode::LockMutex => {
