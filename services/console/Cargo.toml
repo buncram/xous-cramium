@@ -12,8 +12,10 @@ xous-api-ticktimer = "0.9.23"
 xous = "0.9.29"
 log-server = {package = "xous-api-log", version = "0.1.23"}
 log = "0.4.14"
+xous-pio = {path = "../../libs/xous-pio", optional = true}
 
 [features]
 "cramium" = []
 "hwsim" = []
-default = ["cramium"]
+"pio-test" = ["xous-pio"]
+default = ["cramium", "pio-test", "hwsim"]

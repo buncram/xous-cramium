@@ -17,6 +17,7 @@ members = [
   "services/xous-names",
   "services/mbox1",
   "services/mbox2",
+  "libs/xous-pio",
 ]
 resolver = "2"
 

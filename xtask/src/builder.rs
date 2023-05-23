@@ -773,8 +773,11 @@ impl Builder {
             }
         }
         // insert the core complex SVD file
-        args.push("--core-svd");
+        args.push("--extra-svd");
         args.push("precursors/core.svd");
+        // insert a window for PIO testing
+        args.push("--extra-svd");
+        args.push("precursors/pio.svd");
 
         let status = Command::new(cargo())
             .current_dir(project_root())

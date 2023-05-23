@@ -50,6 +50,14 @@ fn main() {
     core_csr.wfo(utra::main::REPORT_REPORT, 0xa51d_600d);
 
     log::info!("my PID is {}", xous::process::id());
+
+    #[cfg(feature="pio-test")]
+    {
+        log::info!("running PIO tests");
+        xous_pio::pio_tests::pio_tests();
+        log::info!("resuming console tests");
+    }
+
     let tt = xous_api_ticktimer::Ticktimer::new().unwrap();
     let mut total = 0;
     let mut iter = 0;
