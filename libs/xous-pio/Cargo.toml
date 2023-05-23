@@ -1,0 +1,24 @@
+[package]
+name = "xous-pio"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4.14"
+pio-proc = "0.2.2"
+pio = "0.2.1"
+
+[target.'cfg(target_os = "xous")'.dependencies]
+xous = "0.9.29"
+
+[features]
+cramium-soc = []
+cramium-fpga = []
+precursor = []
+hosted = []
+renode = []
+
+tests = []
+default = ["tests", "cramium-soc"]
