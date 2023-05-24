@@ -151,6 +151,136 @@ pub fn delay(count: usize) {
         core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
     }
 }
+/// corner cases
+pub fn corner_cases() {
+    report_api(0xcc00_0000);
+
+    // chained fifo depth corner case
+    let mut pio_ss = PioSharedState::new();
+    let mut sm_a = pio_ss.alloc_sm().unwrap();
+
+    let a_code = pio_proc::pio_asm!(
+        "out y, 0", // 32 is coded as 0. If you put 32 in, this changes the "y" source to "null"!
+        "in  y, 0", // 32 is coded as 0
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_out_pins(0, 32);
+    sm_a.config_set_clkdiv(5.3);
+    sm_a.config_set_out_shift(false, true, 32);
+    sm_a.config_set_in_shift(true, true, 32);
+    sm_a.sm_init(a_prog.entry());
+
+    sm_a.sm_clear_fifos(); // ensure the fifos are cleared for this test
+
+    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
+
+    let mut entries = 0;
+    while !sm_a.sm_txfifo_is_full() {
+        entries += 1;
+        sm_a.sm_txfifo_push_u32(0xCC00_0000 + entries);
+    }
+    report_api(0xcc00_0000 + entries);
+    assert!(entries == 10);
+    entries = 0;
+    while !sm_a.sm_rxfifo_is_empty() {
+        entries += 1;
+        let check_data = sm_a.sm_rxfifo_pull_u32();
+        report_api(check_data);
+        assert!(check_data & 0xFFFF == entries);
+    }
+    pio_ss.clear_instruction_memory();
+
+    report_api(0xcc00_1111);
+    // exec corner cases
+    let a_code = pio_proc::pio_asm!(
+        "set x, 17",          // 18
+        "exec_loop:",         // normally you'd want out exec, 32 to keep things simple but out exec, 16 will cause two instructions to run per pull of the fifo
+        "  out exec, 16",     // 19 the intent is the "exec" instruction here should be mov x, y inv + "out exec, 16" (for next loop to stall)
+        "  in y, 0",          // 1A
+        "  jmp x-- exec_loop",// 1B
+        "  wait 1 irq 4 rel", // 1C this should "gutter" execution here
+        "exec_pc_test:",      //
+        "  set x, 31",        // 1D
+        "  mov pins, ::x",    // 1E (bit reversed x)
+        "gutter:",            //
+        "  jmp gutter",       // 1F
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_out_pins(0, 32);
+    sm_a.config_set_clkdiv(2.5);
+    sm_a.config_set_out_shift(true, true, 32);
+    sm_a.config_set_in_shift(false, true, 32);
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos(); // ensure the fifos are cleared for this test
+    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
+
+    // wait for execution to get to the out instruction
+    let mut timeout = 0;
+    while sm_a.sm_address() != 0x19 {
+        timeout += 1;
+        if timeout > 100 {
+            assert!(false); // failed to stop on out exec
+        }
+    }
+    let mut a = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
+    a.out(pio::OutDestination::EXEC, 0);
+    let exec_exec32 = a.assemble_program().code[0];
+    let mut a = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
+    a.out(pio::OutDestination::EXEC, 16);
+    let exec_exec16 = a.assemble_program().code[0];
+
+    let mut a = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
+    a.mov(pio::MovDestination::Y, pio::MovOperation::Invert, pio::MovSource::X);
+    let mov_xy_inv = a.assemble_program().code[0];
+
+    // test that exec can exec "out, exec" instructions. this has to be verified looking
+    // at the waveforms
+    sm_a.sm_txfifo_push_u32(exec_exec32 as u32 | (exec_exec32 as u32) << 16);
+    sm_a.sm_txfifo_push_u32(exec_exec16 as u32 | (exec_exec16 as u32) << 16);
+    sm_a.sm_txfifo_push_u32(exec_exec32 as u32 | (exec_exec32 as u32) << 16);
+    sm_a.sm_txfifo_push_u32(exec_exec16 as u32 | (exec_exec16 as u32) << 16);
+
+    while sm_a.sm_txfifo_is_full() {
+        // wait until the pushed instructions have self-exec'd
+    }
+    // this will trigger the necessary instruction to get out of self-exec hell
+    // the upper 16-bits exec_exec16 is needed to ensure the loop stalls the next
+    // time around; this is because we made it an "out exec, 16", so if we leave
+    // the top bits 0, it will just exec a jmp to 0, which is essentially a nop.
+    sm_a.sm_txfifo_push_u32(mov_xy_inv as u32 | (exec_exec16 as u32) << 16);
+
+    while sm_a.sm_rxfifo_is_empty() {
+        // wait for the "in" response to come back
+    }
+    let checkval = sm_a.sm_rxfifo_pull_u32();
+    report_api(checkval);
+    assert!(checkval == !17u32);
+
+    // it should have looped back to the top again, waiting for another exec. this
+    // time check that exec of an out, PC works
+    let mut a = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
+    a.out(pio::OutDestination::PC, 16);
+    let exec_outpc32 = a.assemble_program().code[0];
+    // this should execute the bottom 16 bits, shift it right, then take the upper 16 bits as args to the PC
+    sm_a.sm_txfifo_push_u32(exec_outpc32 as u32 | 0x1d_0000);
+    // this should now put the value 0xF800_0000 onto the output pins
+    loop {
+        let outval = pio_ss.pio.r(rp_pio::SFR_DBG_PADOUT);
+        if outval == 0xf800_0000 {
+            report_api(outval);
+            break;
+        }
+        report_api(outval);
+    }
+
+    // next up: add a test case for a jmp instruction inserted in-line as an OUT EXEC...
+
+}
+
 /// test that stalled imm instructions are restarted on restart
 pub fn restart_imm_test() {
     report_api(0x0133_0000);

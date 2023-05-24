@@ -462,6 +462,14 @@ impl PioSm {
             SmBit::Sm3 => STRIDE * 3,
         }
     }
+    pub fn sm_address(&self) -> usize {
+        match self.sm {
+            SmBit::Sm0 => self.pio.rf(rp_pio::SFR_SM0_ADDR_PC) as usize,
+            SmBit::Sm1 => self.pio.rf(rp_pio::SFR_SM1_ADDR_PC) as usize,
+            SmBit::Sm2 => self.pio.rf(rp_pio::SFR_SM2_ADDR_PC) as usize,
+            SmBit::Sm3 => self.pio.rf(rp_pio::SFR_SM3_ADDR_PC) as usize,
+        }
+    }
     pub fn config_set_out_pins(&mut self, out_base: usize, out_count: usize) {
         assert!(out_base < 32);
         assert!(out_count <= 32);
