@@ -341,7 +341,8 @@ pub fn corner_cases() {
     sm_b.sm_set_enabled(false);
     pio_ss.clear_instruction_memory();
 
-    // exec corner case: exec can clear stalled IRQ -----------------------
+    // exec corner case: exec can clear stalled IRQ --------------------------------
+    // exec corner case: exec can break out of stalled instruction with JMP --------
     let b_code = pio_proc::pio_asm!(
         "top:",
         "  set y, 12",          // 0x1a put an initial value in y
@@ -387,11 +388,12 @@ pub fn corner_cases() {
 
     // exec corner case: OUT EXEC can clear stalled IRQ -------------------
     pio_ss.clear_instruction_memory();
+    report_api(0xcc00_6666);
     let a_code = pio_proc::pio_asm!(
         "top:",
         "  set y, 5",           // 0x19 put an initial value in y
         "wait_target:",
-        "  out exec, 16",       // 0x1a stall on out exec <---- stall target
+        "  out exec, 32",       // 0x1a stall on out exec <---- stall target
         "  wait 1 irq 2 rel",   // 0x1b this should stall unless the `out exec` had an `irq` instruction in it
         "  in  y, 0",           // 0x1c this will push 5 into Rx FIFO, indicating success
         "  jmp top",            // 0x1d loop back, so the only way we get to bypass is with an exec
@@ -400,7 +402,6 @@ pub fn corner_cases() {
         "  in  x, 0",           // 0x1f pushes !y into Rx FIFO
     );
     let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
-    report_api(0xcc00_6666);
     sm_a.sm_set_enabled(false);
     a_prog.setup_default_config(&mut sm_a);
     sm_a.config_set_clkdiv(3.0);
@@ -414,6 +415,100 @@ pub fn corner_cases() {
     let exec_set_irq2 = pio_proc::pio_asm!("irq set 2 rel").program.code[0];
     sm_a.sm_txfifo_push_u32(exec_set_irq2 as u32);
     wait_rx_or_fail(&mut sm_a, 5, None, None);
+
+    // exec corner case: writing over stalled instruction breaks stall ----------
+    wait_addr_or_fail(&sm_a, 0x1a, Some(100));  // manual match to wait target
+    let nop = pio_proc::pio_asm!("mov y, y").program.code[0];
+    sm_a.sm_txfifo_push_u32(nop as u32); // break the out exec stall, but get stuck at "wait 1 irq 2 rel"
+    wait_addr_or_fail(&sm_a, 0x1b, Some(100));  // manual match to wait target
+    let set_y_31 = pio_proc::pio_asm!("set y, 31").program.code[0];
+    // slot this over the blocked instruction: 0x1b == 27
+    pio_ss.pio.wfo(rp_pio::SFR_INSTR_MEM27_INSTR, set_y_31 as u32);
+    wait_rx_or_fail(&mut sm_a, 31, None, None);
+
+    // exec corner case: EXEC succeeds even when SM is disabled -----------------
+    sm_a.sm_set_enabled(false);
+    sm_a.sm_clear_fifos(); // ensure the fifos are cleared for this test
+    sm_a.sm_exec(pio_proc::pio_asm!("set x, 12").program.code[0]);
+    sm_a.sm_exec(pio_proc::pio_asm!("in  x, 0").program.code[0]);
+    sm_a.sm_exec(pio_proc::pio_asm!("mov y, !x").program.code[0]);
+    sm_a.sm_exec(pio_proc::pio_asm!("in  y, 0").program.code[0]);
+    sm_a.sm_exec(pio_proc::pio_asm!("mov x, ::y").program.code[0]);
+    sm_a.sm_exec(pio_proc::pio_asm!("in  x, 0").program.code[0]);
+
+    wait_rx_or_fail(&mut sm_a, 12, None, None);
+    wait_rx_or_fail(&mut sm_a, !12, None, None);
+    wait_rx_or_fail(&mut sm_a, 0xCFFF_FFFF, None, None);
+
+    // IO corner case: side-set happens when SM is stalled --------------------
+    pio_ss.clear_instruction_memory();
+    report_api(0xcc00_7777);
+    let a_code = pio_proc::pio_asm!(
+        ".side_set 1 opt"
+        "top:",
+        "  set y, 9           side 1", // 0x19 put an initial value in y
+        "wait_target:",
+        "  out exec, 32       side 0", // 0x1a stall on out exec <---- stall target
+        "  wait 1 irq 5       side 1", // 0x1b also stalls
+        "  in  y, 0           side 0", // 0x1c this will push 9 into Rx FIFO, indicating success
+        "  jmp top",                   // 0x1d loop back, so the only way we get to bypass is with an exec
+        "bypass:",
+        "  mov x, !y",                 // 0x1e invert y
+        "  in  x, 0",                  // 0x1f pushes !y into Rx FIFO
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(7.15);
+    sm_a.config_set_out_shift(true, true, 32);
+    sm_a.config_set_in_shift(false, true, 32);
+    sm_a.config_set_out_pins(4, 1);
+    sm_a.config_set_sideset_pins(4); // one bit at bit 4 should flip up and down
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos(); // ensure the fifos are cleared for this test
+    sm_a.sm_set_enabled(true);
+
+    wait_addr_or_fail(&sm_a, 0x1a, None);
+    assert!((sm_a.pio.r(rp_pio::SFR_DBG_PADOUT) & 0x10) == 0); // side-set on out exec 32 should have gone through
+    sm_a.sm_txfifo_push_u32(pio_proc::pio_asm!("nop").program.code[0] as u32);
+    wait_addr_or_fail(&sm_a, 0x1b, None);
+    assert!((sm_a.pio.r(rp_pio::SFR_DBG_PADOUT) & 0x10) != 0); // side-set on out exec 32 should have gone through
+    sm_a.sm_exec(pio_proc::pio_asm!("irq set 5").program.code[0]);
+    wait_addr_or_fail(&sm_a, 0x1a, None);
+    assert!((sm_a.pio.r(rp_pio::SFR_DBG_PADOUT) & 0x10) == 0);
+    wait_rx_or_fail(&mut sm_a, 9, None, None);
+
+    // IO corner case: simultaneous side-set and OUT/SET of the same pin gives precedence to side-set -----
+    pio_ss.clear_instruction_memory();
+    report_api(0xcc00_8888);
+    // this one will toggle pins via a side-set
+    let a_code = pio_proc::pio_asm!(
+        ".side_set 1 opt"
+        "  mov osr, null",           // 0x1b load OSR with 0
+        "  out pins, 2    side 1",   // 0x1c write 0b00 to the output pins - but side set should override to 1
+        "  wait 1 irq 0",            // 0x1d cause a stall
+        "  set pins, 3    side 0",   // 0x1e write 0b11 to the output pins - but side set should override to 0
+        "  wait 1 irq 0",            // 0x1f cause a stall
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(1.15);
+    sm_a.config_set_out_shift(false, false, 2);
+    sm_a.config_set_out_pins(0, 2);
+    sm_a.config_set_set_pins(0, 2);
+    sm_a.config_set_sideset_pins(0);
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_set_enabled(true);
+
+    for _ in 0..10 {
+        wait_addr_or_fail(&sm_a, 0x1d, None);
+        assert!((sm_a.pio.r(rp_pio::SFR_DBG_PADOUT) & 0b11) == 0b01);
+        sm_a.sm_exec(pio_proc::pio_asm!("irq set 0").program.code[0]);
+        wait_addr_or_fail(&sm_a, 0x1f, None);
+        assert!((sm_a.pio.r(rp_pio::SFR_DBG_PADOUT) & 0b11) == 0b10);
+        sm_a.sm_exec(pio_proc::pio_asm!("irq set 0").program.code[0]);
+    }
 
     report_api(0xcc00_600d);
 }
