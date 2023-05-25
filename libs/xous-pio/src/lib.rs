@@ -818,8 +818,19 @@ impl PioSm {
         );
 
         // Finally, clear some internal SM state
-        self.pio.rmwf(rp_pio::SFR_CTRL_RESTART, self.sm_bitmask());
-        self.pio.rmwf(rp_pio::SFR_CTRL_CLKDIV_RESTART, self.sm_bitmask());
+        // these *must* be combined together, because the CPU runs much faster than the
+        // state machines -- if you write clkdiv_restart and then restart one after another,
+        // one of the commands will likely get lost, because the CPU is changing command
+        // state before the PIO block can even recognize it.
+        self.pio.wo(
+            rp_pio::SFR_CTRL,
+            self.pio.rf(rp_pio::SFR_CTRL_EN)
+            | self.pio.ms(rp_pio::SFR_CTRL_CLKDIV_RESTART, self.sm_bitmask())
+            | self.pio.ms(rp_pio::SFR_CTRL_RESTART, self.sm_bitmask())
+        );
+        while (self.pio.r(rp_pio::SFR_CTRL) & !0xF) != 0 {
+            // wait for the bits to self-reset to acknowledge that the clears have executed
+        }
 
         let mut a = pio::Assembler::<32>::new();
         let mut initial_label = a.label_at_offset(initial_pc as u8);
@@ -858,17 +869,18 @@ impl PioSm {
     /// Also restarts the relevant state machine.
     pub fn sm_jump_to_wrap_bottom(&mut self) {
         // disable the machine
+        // and restart it
         self.pio.wo(
             rp_pio::SFR_CTRL,
-            self.pio.r(rp_pio::SFR_CTRL)
-            & !self.pio.ms(rp_pio::SFR_CTRL_EN, self.sm_bitmask())
-        );
-        // restart it
-        self.pio.wo(
-            rp_pio::SFR_CTRL,
-            self.pio.r(rp_pio::SFR_CTRL)
+            (self.pio.rf(rp_pio::SFR_CTRL_EN) // this is aligned to 0 so we're skipping the alignment
+              & !self.pio.ms(rp_pio::SFR_CTRL_EN, self.sm_bitmask())
+            )
             | self.pio.ms(rp_pio::SFR_CTRL_RESTART, self.sm_bitmask())
         );
+        while (self.pio.r(rp_pio::SFR_CTRL) & !0xF) != 0 {
+            // wait for the bits to self-reset to acknowledge that the clears have executed
+        }
+
         // HACK: a jump instruction is just the address of the location you want to run
         // so we can just extract the wrap target and "use that as an instruction".
         let instr = match self.sm {
