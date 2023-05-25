@@ -84,6 +84,9 @@ pub fn sticky_test() {
         | sm_a.pio.ms(rp_pio::SFR_CTRL_CLKDIV_RESTART, sm_b.sm_bitmask())
         | sm_a.pio.ms(rp_pio::SFR_CTRL_RESTART, sm_b.sm_bitmask())
     );
+    while (sm_a.pio.r(rp_pio::SFR_CTRL) & !0xF) != 0 {
+        // wait for the bits to self-reset to acknowledge that the command has executed
+    }
     // now set both running at the same time
     report_api(0x51C2_1111);
     sm_a.pio.wo(
@@ -118,6 +121,9 @@ pub fn sticky_test() {
         | sm_a.pio.ms(rp_pio::SFR_CTRL_CLKDIV_RESTART, sm_b.sm_bitmask())
         | sm_a.pio.ms(rp_pio::SFR_CTRL_RESTART, sm_b.sm_bitmask())
     );
+    while (sm_a.pio.r(rp_pio::SFR_CTRL) & !0xF) != 0 {
+        // wait for the bits to self-reset to acknowledge that the command has executed
+    }
     // now set both running at the same time
     report_api(0x51C2_3333);
     sm_a.pio.wo(
@@ -151,11 +157,56 @@ pub fn delay(count: usize) {
         core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
     }
 }
+
+fn wait_addr_or_fail(sm: &PioSm, addr: usize, timeout: Option<usize>) {
+    let target = timeout.unwrap_or(1000);
+    let mut timeout = 0;
+    while sm.sm_address() != addr {
+        timeout += 1;
+        if timeout > target {
+            assert!(false); // failed to stop on out exec
+        }
+    }
+}
+
+fn wait_rx_or_fail(sm: &mut PioSm, rxval: u32, mask: Option<u32>, timeout: Option<usize>) {
+    let mask = mask.unwrap_or(0xFFFF_FFFF);
+    let target = timeout.unwrap_or(1000);
+    let mut timeout = 0;
+    while sm.sm_rxfifo_is_empty() {
+        // wait for the "in" response to come back
+        timeout += 1;
+        if timeout > target {
+            assert!(false);
+        }
+    }
+    let checkval = sm.sm_rxfifo_pull_u32();
+    report_api(checkval);
+    assert!(checkval & mask == rxval);
+}
+
+fn wait_gpio_or_fail(ss: &PioSharedState, pinval: u32, mask: Option<u32>, timeout: Option<usize>) {
+    let mask = mask.unwrap_or(0xFFFF_FFFF);
+    let target = timeout.unwrap_or(1000);
+    let mut timeout = 0;
+    loop {
+        let outval = ss.pio.r(rp_pio::SFR_DBG_PADOUT);
+        if (outval & mask) == pinval {
+            report_api(outval);
+            break;
+        }
+        report_api(outval);
+        timeout += 1;
+        if timeout > target {
+            assert!(false); // failed to acquire pinval
+        }
+    }
+}
 /// corner cases
 pub fn corner_cases() {
     report_api(0xcc00_0000);
 
-    // chained fifo depth corner case
+    // chained fifo depth corner case --------------------------------------
     let mut pio_ss = PioSharedState::new();
     let mut sm_a = pio_ss.alloc_sm().unwrap();
 
@@ -171,10 +222,8 @@ pub fn corner_cases() {
     sm_a.config_set_out_shift(false, true, 32);
     sm_a.config_set_in_shift(true, true, 32);
     sm_a.sm_init(a_prog.entry());
-
     sm_a.sm_clear_fifos(); // ensure the fifos are cleared for this test
-
-    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
+    sm_a.sm_set_enabled(true);
 
     let mut entries = 0;
     while !sm_a.sm_txfifo_is_full() {
@@ -193,7 +242,7 @@ pub fn corner_cases() {
     pio_ss.clear_instruction_memory();
 
     report_api(0xcc00_1111);
-    // exec corner cases
+    // exec corner case: EXEC instruction should side-effect the PC -----------------------
     let a_code = pio_proc::pio_asm!(
         "set x, 17",          // 18
         "exec_loop:",         // normally you'd want out exec, 32 to keep things simple but out exec, 16 will cause two instructions to run per pull of the fifo
@@ -216,26 +265,13 @@ pub fn corner_cases() {
     sm_a.config_set_in_shift(false, true, 32);
     sm_a.sm_init(a_prog.entry());
     sm_a.sm_clear_fifos(); // ensure the fifos are cleared for this test
-    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
+    sm_a.sm_set_enabled(true);
 
     // wait for execution to get to the out instruction
-    let mut timeout = 0;
-    while sm_a.sm_address() != 0x19 {
-        timeout += 1;
-        if timeout > 100 {
-            assert!(false); // failed to stop on out exec
-        }
-    }
-    let mut a = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
-    a.out(pio::OutDestination::EXEC, 0);
-    let exec_exec32 = a.assemble_program().code[0];
-    let mut a = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
-    a.out(pio::OutDestination::EXEC, 16);
-    let exec_exec16 = a.assemble_program().code[0];
-
-    let mut a = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
-    a.mov(pio::MovDestination::Y, pio::MovOperation::Invert, pio::MovSource::X);
-    let mov_xy_inv = a.assemble_program().code[0];
+    wait_addr_or_fail(&sm_a, 0x19, Some(100)); // manual match to wait target
+    let exec_exec32 = pio_proc::pio_asm!("out exec, 0").program.code[0];
+    let exec_exec16 = pio_proc::pio_asm!("out exec, 16").program.code[0];
+    let mov_xy_inv = pio_proc::pio_asm!("mov y, !x").program.code[0];
 
     // test that exec can exec "out, exec" instructions. this has to be verified looking
     // at the waveforms
@@ -253,32 +289,103 @@ pub fn corner_cases() {
     // the top bits 0, it will just exec a jmp to 0, which is essentially a nop.
     sm_a.sm_txfifo_push_u32(mov_xy_inv as u32 | (exec_exec16 as u32) << 16);
 
-    while sm_a.sm_rxfifo_is_empty() {
-        // wait for the "in" response to come back
-    }
-    let checkval = sm_a.sm_rxfifo_pull_u32();
-    report_api(checkval);
-    assert!(checkval == !17u32);
+    wait_rx_or_fail(&mut sm_a, !17u32, None, None);
 
     // it should have looped back to the top again, waiting for another exec. this
     // time check that exec of an out, PC works
-    let mut a = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
-    a.out(pio::OutDestination::PC, 16);
-    let exec_outpc32 = a.assemble_program().code[0];
+    let exec_outpc32 = pio_proc::pio_asm!("out pc, 16").program.code[0];
     // this should execute the bottom 16 bits, shift it right, then take the upper 16 bits as args to the PC
     sm_a.sm_txfifo_push_u32(exec_outpc32 as u32 | 0x1d_0000);
     // this should now put the value 0xF800_0000 onto the output pins
-    loop {
-        let outval = pio_ss.pio.r(rp_pio::SFR_DBG_PADOUT);
-        if outval == 0xf800_0000 {
-            report_api(outval);
-            break;
+    wait_gpio_or_fail(&pio_ss, 0xf800_0000, None, Some(1000));
+
+    // reset the machine and test that a JMP in the OUT EXEC works
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos(); // ensure the fifos are cleared for this test
+    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
+
+    // wait for execution to get to the out instruction
+    wait_addr_or_fail(&sm_a, 0x19, Some(100));
+    // this instruction will decrement x from 17->16 and jump
+    let exec_outpc32 = pio_proc::pio_asm!("jmp x--, 0x1e").program.code[0];
+    sm_a.sm_txfifo_push_u32(exec_outpc32 as u32);
+    // this should now put the value 0x0800_0000 onto the output pins (16 reversed)
+    wait_gpio_or_fail(&pio_ss, 0x0800_0000, None, Some(1000));
+
+    sm_a.sm_set_enabled(false);
+    pio_ss.clear_instruction_memory();
+    report_api(0xcc00_2222);
+    // exec corner case: exec can clear stalled IRQ -----------------------
+    let mut sm_b = pio_ss.alloc_sm().unwrap(); // run this on SM_B so we can test `rel` irqs
+    let b_code = pio_proc::pio_asm!(
+        "set x, 12",          // 0x1d put an initial value in x
+        "wait 1 irq 6 rel",   // 0x1e this should stall <--- wait target
+        "in  x, 0",           // 0x1f this will push 12 into Rx FIFO, indicating success
+    );
+    let b_prog = LoadedProg::load(b_code.program, &mut pio_ss).unwrap();
+    sm_b.sm_set_enabled(false);
+    b_prog.setup_default_config(&mut sm_b);
+    sm_b.config_set_out_pins(0, 32);
+    sm_b.config_set_clkdiv(1.5);
+    sm_b.config_set_out_shift(true, true, 32);
+    sm_b.config_set_in_shift(false, true, 32);
+    sm_b.sm_init(b_prog.entry());
+    sm_b.sm_clear_fifos(); // ensure the fifos are cleared for this test
+    sm_b.sm_set_enabled(true);
+
+    wait_addr_or_fail(&sm_b, 0x1e, Some(100));  // manual match to wait target
+    let exec_set_irq6 = pio_proc::pio_asm!("irq set 6 rel").program.code[0];
+    sm_b.sm_exec(exec_set_irq6);
+    wait_rx_or_fail(&mut sm_b, 12, None, None);
+
+    sm_b.sm_set_enabled(false);
+    pio_ss.clear_instruction_memory();
+
+    // exec corner case: exec can clear stalled IRQ -----------------------
+    let b_code = pio_proc::pio_asm!(
+        "top:",
+        "  set y, 12",          // 0x1a put an initial value in y
+        "wait_target:",
+        "  wait 1 irq 6 rel",   // 0x1b this should stall <--- wait target
+        "  in  y, 0",           // 0x1c this will push 12 into Rx FIFO, indicating success
+        "  jmp top",            // 0x1d loop back, so the only way we get to bypass is with an exec
+        "bypass:",
+        "  mov x, !y",          // 0x1e invert y
+        "  in  x, 0",           // 0x1f pushes !y into Rx FIFO
+    );
+    let b_prog = LoadedProg::load(b_code.program, &mut pio_ss).unwrap();
+    // check multiple clkdiv cases to capture corners in the irq_stb logic
+    let divs = [1.0f32, 3.5f32, 4.0f32];
+    let mut divstate = 0x3333u32;
+    divs.map(
+        |clkdiv: f32| {
+            report_api(0xcc00_0000 + divstate);
+            divstate += 0x1111;
+            sm_b.sm_set_enabled(false);
+            b_prog.setup_default_config(&mut sm_b);
+            sm_b.config_set_out_pins(0, 32);
+            sm_b.config_set_clkdiv(clkdiv);
+            sm_b.config_set_out_shift(true, true, 32);
+            sm_b.config_set_in_shift(false, true, 32);
+            sm_b.sm_init(b_prog.entry());
+            sm_b.sm_clear_fifos(); // ensure the fifos are cleared for this test
+            sm_b.sm_set_enabled(true);
+
+            wait_addr_or_fail(&sm_b, 0x1b, Some(100));  // manual match to wait target
+            let exec_set_irq6 = pio_proc::pio_asm!("irq set 6 rel").program.code[0];
+            sm_b.sm_exec(exec_set_irq6);
+            // exactly one entry should go into the Rx fifo. If the irq does not self-clear after exec, we will get more than one, and the next check fails.
+            wait_rx_or_fail(&mut sm_b, 12, None, None);
+
+            // program will loop back to top, and will be stuck at wait again
+            wait_addr_or_fail(&sm_b, 0x1b, Some(100));  // manual match to wait target
+            let exec_jmp_bypass = pio_proc::pio_asm!("jmp y--, 0x1e").program.code[0];
+            sm_b.sm_exec(exec_jmp_bypass);
+            wait_rx_or_fail(&mut sm_b, !11, None, None);
         }
-        report_api(outval);
-    }
+    );
 
-    // next up: add a test case for a jmp instruction inserted in-line as an OUT EXEC...
-
+    report_api(0xcc00_600d);
 }
 
 /// test that stalled imm instructions are restarted on restart
@@ -322,6 +429,9 @@ pub fn restart_imm_test() {
 
     // this should clear the stall
     sm_a.pio.rmwf(rp_pio::SFR_CTRL_RESTART, sm_a.sm_bitmask());
+    while (sm_a.pio.r(rp_pio::SFR_CTRL) & !0xF) != 0 {
+        // wait for the bits to self-reset to acknowledge that the command has executed
+    }
     report_api(0x0133_3333);
     delay(50);
     assert!(sm_a.pio.rf(rp_pio::SFR_SM0_EXECCTRL_EXEC_STALLED_RO0) == 0);
@@ -930,8 +1040,14 @@ pub fn register_tests() {
     }
 
     // start the machines running
-    sm_array[0].pio.wfo(rp_pio::SFR_CTRL_CLKDIV_RESTART, 0xF); // sync the clocks; the clock free-runs after the div is setup, and the divs are set up at arbitrary points in time
-    sm_array[0].pio.wfo(rp_pio::SFR_CTRL_EN, 0xF);
+    sm_array[0].pio.wo(
+        rp_pio::SFR_CTRL,
+        sm_array[0].pio.ms(rp_pio::SFR_CTRL_CLKDIV_RESTART, 0xF)
+        | sm_array[0].pio.ms(rp_pio::SFR_CTRL_EN, 0xF)
+    ); // sync the clocks; the clock free-runs after the div is setup, and the divs are set up at arbitrary points in time
+    while (sm_array[0].pio.r(rp_pio::SFR_CTRL) & !0xF) != 0 {
+        // wait for the bits to self-reset to acknowledge that the command has executed
+    }
     report_api(0x1336_0008);
 
     let mut waiting_for = 0;
