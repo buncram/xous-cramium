@@ -385,6 +385,36 @@ pub fn corner_cases() {
         }
     );
 
+    // exec corner case: OUT EXEC can clear stalled IRQ -------------------
+    pio_ss.clear_instruction_memory();
+    let a_code = pio_proc::pio_asm!(
+        "top:",
+        "  set y, 5",           // 0x19 put an initial value in y
+        "wait_target:",
+        "  out exec, 16",       // 0x1a stall on out exec <---- stall target
+        "  wait 1 irq 2 rel",   // 0x1b this should stall unless the `out exec` had an `irq` instruction in it
+        "  in  y, 0",           // 0x1c this will push 5 into Rx FIFO, indicating success
+        "  jmp top",            // 0x1d loop back, so the only way we get to bypass is with an exec
+        "bypass:",
+        "  mov x, !y",          // 0x1e invert y
+        "  in  x, 0",           // 0x1f pushes !y into Rx FIFO
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    report_api(0xcc00_6666);
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(3.0);
+    sm_a.config_set_out_shift(true, true, 32);
+    sm_a.config_set_in_shift(false, true, 32);
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos(); // ensure the fifos are cleared for this test
+    sm_a.sm_set_enabled(true);
+
+    wait_addr_or_fail(&sm_a, 0x1a, Some(100));  // manual match to wait target
+    let exec_set_irq2 = pio_proc::pio_asm!("irq set 2 rel").program.code[0];
+    sm_a.sm_txfifo_push_u32(exec_set_irq2 as u32);
+    wait_rx_or_fail(&mut sm_a, 5, None, None);
+
     report_api(0xcc00_600d);
 }
 
