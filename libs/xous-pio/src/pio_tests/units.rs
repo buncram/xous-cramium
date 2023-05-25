@@ -510,7 +510,106 @@ pub fn corner_cases() {
         sm_a.sm_exec(pio_proc::pio_asm!("irq set 0").program.code[0]);
     }
 
+    // IO corner case: pin modulus wrapping ----------------------------------
+    // 1. OUT_BASE / OUT_COUNT wrap around
+    // 2. SET_BASE / SET_COUNT wrap around
+    // 3. SIDESET_BASE / SIDESET_COUNT wrap around
+    pio_ss.clear_instruction_memory();
+    sm_a.sm_set_enabled(false);
+    report_api(0xcc00_9999);
+    let a_code = pio_proc::pio_asm!(
+        ".side_set 5",
+        "  out pins, 16   side 0x1A", // 0x1d
+        "  set pins, 0x1f side 0x1A", // 0x1e
+        "  out pins, 16   side 0x05", // 0x1f
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(1.15);
+    sm_a.config_set_out_shift(true, true, 16);
+    sm_a.config_set_out_pins(24, 16); // should wrap to lower 8 bits
+    sm_a.config_set_set_pins(28, 5);  // should wrap 1 bit over
+    sm_a.config_set_sideset_pins(30); // should wrap 3 bits over
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos();
+    sm_a.sm_set_enabled(true);
+
+    let set_mask = rot_left(0x1f, 28);
+    let sideset_mask = rot_left(0x1f, 30);
+    let base_mask = rot_left(0xffff, 24);
+    let mut model;
+
+    wait_addr_or_fail(&sm_a, 0x1d, None);
+    sm_a.sm_txfifo_push_u32(0);
+    model = rot_left(0 & 0xFFFF, 24);
+    model &= !set_mask;
+    model |= rot_left(0x1f, 28);
+    model &= !sideset_mask;
+    model |= rot_left(0x05, 30);
+    wait_addr_or_fail(&sm_a, 0x1f, None);
+    let rbk = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT) & base_mask;
+    report_api(rbk);
+    report_api(model);
+    assert!(rbk == model);
+
+    sm_a.sm_txfifo_push_u32(0xcccc);
+    wait_addr_or_fail(&sm_a, 0x1d, None);
+    model = rot_left(0xcccc & 0xFFFF, 24);
+    model &= !sideset_mask;
+    model |= rot_left(0x05, 30);
+    model &= !sideset_mask;
+    model |= rot_left(0x1a, 30);
+    let rbk = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT) & base_mask;
+    report_api(rbk);
+    report_api(model);
+    assert!(rbk == model);
+
+    // IO corner case: pin modulus wrapping ----------------------------------
+    // 4. Input pins wrap around modulo 32 off of IN_BASE
+    // 5. WAIT with pin source wraps modulo 32 + in_pin_index
+    pio_ss.clear_instruction_memory();
+    sm_a.sm_set_enabled(false);
+    report_api(0xcc00_aaaa);
+    let a_code = pio_proc::pio_asm!(
+        "  out pins, 0",
+        "  in  pins, 24",
+        "  out pins, 0",
+        "  set y, 10",
+        "  wait 1 pin 30", // clear this wait with an exec
+        "  in  y, 0",  // puts 10 into the rx fifo to indicate done-ness
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(32.0); // give time for data to go out and back again
+    sm_a.config_set_out_shift(true, true, 32);
+    sm_a.config_set_in_shift(false, true, 24);
+    sm_a.config_set_out_pins(0, 32);
+    sm_a.config_set_in_pins(9);
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos();
+    sm_a.sm_set_enabled(true);
+
+    sm_a.sm_txfifo_push_u32(0xaa12_3455);
+    // the differences from the pushed is due to the test bench harnessing, some gpio pins are not looped back or are modified by the test bench for other tests!
+    // this value is just read back manually from the waveforms
+    let model = rot_left(0x2a12_345D, 32-9) & 0xFF_FFFF;
+    report_api(model);
+    wait_rx_or_fail(&mut sm_a, model, None, None);
+
+    // clear the output pins to 0
+    sm_a.sm_txfifo_push_u32(0x0);
+    // we should now be stuck on "wait 1 pin 30"
+    wait_addr_or_fail(&sm_a, 0x1e, None);
+    sm_a.sm_exec(pio_proc::pio_asm!("out pins 0").program.code[0]);
+    sm_a.sm_txfifo_push_u32(1 << ((30 + 9) % 32)); // this targeted set should clear the wait only if the wait is wrapping the inputs correctly
+    wait_rx_or_fail(&mut sm_a, 10, None, None);
+
     report_api(0xcc00_600d);
+}
+fn rot_left(word: u32, count: u32) -> u32 {
+    (word << count) | ((word >> (32-count)) & ((1 << count) - 1))
 }
 
 /// test that stalled imm instructions are restarted on restart

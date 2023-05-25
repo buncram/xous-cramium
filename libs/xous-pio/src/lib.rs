@@ -521,7 +521,7 @@ impl PioSm {
     }
     #[allow(dead_code)]
     pub fn config_set_sideset(&mut self, bit_count: usize, optional: bool, pindirs: bool) {
-        assert!(bit_count < 5);
+        assert!(bit_count <= 5);
         assert!(!optional || bit_count >= 1);
         self.config.pinctl =
             self.pio.zf(rp_pio::SFR_SM0_PINCTRL_PINS_SIDE_COUNT,
