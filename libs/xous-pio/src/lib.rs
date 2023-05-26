@@ -35,6 +35,12 @@ pub enum PioIntSource {
     TxNotFull,
     RxNotEmpty,
 }
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u32)]
+pub enum MovStatusType {
+    StatusTxLessThan = 0,
+    StatusRxLessThan = 1,
+}
 #[derive(Debug, Copy, Clone)]
 #[repr(u32)]
 pub enum PioFifoJoin {
@@ -642,6 +648,18 @@ impl PioSm {
                 PioFifoJoin::JoinTx => self.pio.ms(rp_pio::SFR_SM0_SHIFTCTRL_JOIN_TX, 1),
                 PioFifoJoin::JoinRx => self.pio.ms(rp_pio::SFR_SM0_SHIFTCTRL_JOIN_RX, 1),
             }
+    }
+    pub fn config_set_mov_status(&mut self, status_sel: MovStatusType, level: usize) {
+        self.config.execctl =
+            self.pio.zf(
+                rp_pio::SFR_SM0_EXECCTRL_STATUS_SEL,
+                self.pio.zf(rp_pio::SFR_SM0_EXECCTRL_STATUS_N,
+                    self.config.execctl
+                )
+            )
+            | self.pio.ms(rp_pio::SFR_SM0_EXECCTRL_STATUS_SEL, status_sel as u32)
+            | self.pio.ms(rp_pio::SFR_SM0_EXECCTRL_STATUS_N, level as u32)
+            ;
     }
 
     pub fn sm_exec(&mut self, instr: u16) {

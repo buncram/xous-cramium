@@ -202,6 +202,18 @@ fn wait_gpio_or_fail(ss: &PioSharedState, pinval: u32, mask: Option<u32>, timeou
         }
     }
 }
+
+fn wait_irq_or_fail(sm: &PioSm, irq_index: usize, timeout: Option<usize>) {
+    let target = timeout.unwrap_or(1000);
+    let mut timeout = 0;
+    while (sm.pio.rf(rp_pio::SFR_IRQ_SFR_IRQ) & (1 << irq_index)) == 0 {
+        timeout += 1;
+        if timeout > target {
+            assert!(false);
+        }
+    }
+}
+
 /// corner cases
 pub fn corner_cases() {
     report_api(0xcc00_0000);
@@ -209,6 +221,8 @@ pub fn corner_cases() {
     // chained fifo depth corner case --------------------------------------
     let mut pio_ss = PioSharedState::new();
     let mut sm_a = pio_ss.alloc_sm().unwrap();
+    pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
 
     let a_code = pio_proc::pio_asm!(
         "out y, 0", // 32 is coded as 0. If you put 32 in, this changes the "y" source to "null"!
@@ -641,7 +655,7 @@ pub fn corner_cases() {
     // this should cause an auto-pull, lowering the fifo level by 1
     sm_a.sm_exec(pio_proc::pio_asm!("nop").program.code[0]);
     report_api(0xcc02_bbbb);
-    // assert!(sm_a.sm_txfifo_level() == 3);
+    assert!(sm_a.sm_txfifo_level() == 3);
 
     // reset the machine
     sm_a.sm_init(a_prog.entry());
@@ -727,11 +741,114 @@ fn rot_left(word: u32, count: u32) -> u32 {
     (word << count) | ((word >> (32-count)) & ((1 << count) - 1))
 }
 
+pub fn instruction_tests() {
+    report_api(0x1c5f_0000);
+    let mut pio_ss = PioSharedState::new();
+    let mut sm_a = pio_ss.alloc_sm().unwrap();
+    pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
+
+    // check mov, irq, wait corners ------------------------------------------------------
+    let a_code = pio_proc::pio_asm!(
+        "irq set 7",      // just to make sure this is behaving correctly (staring at waveforms)
+        "out x, 0",
+        "in  x, 0",
+        "out x, 0",
+        "in  x, 0",
+        "irq wait 1",     // 0x19  this only moves on when cleared
+        "wait 1 irq 1",   // 0x1a  so this should *also* stall
+        "mov y, status",  // 0x1b
+        "in  y, 0",       // 0x1c
+        "set x, 30",      // 0x1d  stick myself in a loop to here
+        "irq clear 7",    // 0x1e  just to make sure this is behaving correctly (staring at waveforms)
+        "mov pc, x",      // 0x1f  should stick in a tight loop at the end
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(2.0); // if this is set to 1.0 the "retrograde PC" check at the bottom needs to be commented out, because the PC moves too fast for the APB to reliably sample
+    sm_a.config_set_out_shift(true, true, 32);
+    sm_a.config_set_in_shift(true, true, 32);
+    sm_a.config_set_mov_status(MovStatusType::StatusTxLessThan, 0);
+    sm_a.sm_init(a_prog.entry());
+    assert!(sm_a.sm_index() == 0); // make sure we got this SM because we're hard coding the STATUS change value in the loop below to this index
+    let mut status_sel = MovStatusType::StatusTxLessThan;
+    let mut level = 0;
+    loop {
+        sm_a.sm_clear_fifos(); // ensure the fifos are cleared for this test
+        pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 0xFF); // clear all irqs for this test
+        pio_ss.pio.wo(
+            rp_pio::SFR_SM0_EXECCTRL,
+            pio_ss.pio.zf(
+                rp_pio::SFR_SM0_EXECCTRL_STATUS_SEL,
+                pio_ss.pio.zf(rp_pio::SFR_SM0_EXECCTRL_STATUS_N,
+                    pio_ss.pio.r(rp_pio::SFR_SM0_EXECCTRL)
+                )
+            )
+            | pio_ss.pio.ms(rp_pio::SFR_SM0_EXECCTRL_STATUS_SEL, status_sel as u32)
+            | pio_ss.pio.ms(rp_pio::SFR_SM0_EXECCTRL_STATUS_N, level as u32)
+        );
+        let expected_value = if 2 < level {0xFFFF_FFFF} else {0};
+
+        // reset the PC
+        let mut a = pio::Assembler::<32>::new();
+        let mut initial_label = a.label_at_offset(a_prog.entry() as u8);
+        a.jmp(pio::JmpCondition::Always, &mut initial_label);
+        let p= a.assemble_program();
+        sm_a.sm_exec(p.code[p.origin.unwrap_or(0) as usize]);
+        pio_ss.pio.wfo(rp_pio::SFR_CTRL_RESTART, sm_a.sm_bitmask());
+        sm_a.sm_set_enabled(true);
+
+        for i in 1..=5 { // put 5 entries in; the first two should go to the Rx fifo, 1 should be in the state machine, 2 remaining in the FIFO
+            sm_a.sm_txfifo_push_u32(0x1c5f_0000 + i);
+        }
+        // we should now have a level == 2 for both
+        report_api(0x1c5f_1000);
+        assert!(sm_a.sm_txfifo_level() == 2);
+        report_api(0x1c5f_2000);
+        assert!(sm_a.sm_rxfifo_level() == 2);
+        // wait until irq 1 is asserted
+        wait_irq_or_fail(&sm_a, 1, None);
+        report_api(0x1c5f_3000);
+        wait_addr_or_fail(&sm_a, 0x19, None);
+        // clear irq1
+        pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 1);
+        wait_addr_or_fail(&sm_a, 0x1a, None);
+        // set irq1
+        pio_ss.pio.wfo(rp_pio::SFR_IRQ_FORCE_SFR_IRQ_FORCE, 1 << 1);
+        report_api(0x1c5f_4000);
+        assert!(sm_a.sm_rxfifo_level() == 3);
+        wait_rx_or_fail(&mut sm_a, 0x1c5f_0001, None, None);
+        wait_rx_or_fail(&mut sm_a, 0x1c5f_0002, None, None);
+        wait_rx_or_fail(&mut sm_a, expected_value, None, None);
+        // retrograde movement of address would indicate we're in the loop (this might not work perfectly on real hardware due to synchronizers)
+        wait_addr_or_fail(&sm_a, 31, None);
+        wait_addr_or_fail(&sm_a, 30, None);
+
+        level += 1;
+        if level > 4 {
+            if status_sel == MovStatusType::StatusRxLessThan {
+                break;
+            } else {
+                status_sel = MovStatusType::StatusRxLessThan;
+                level = 0;
+            }
+        }
+        sm_a.sm_set_enabled(false);
+    }
+
+    pio_ss.clear_instruction_memory();
+
+}
+
 /// test that stalled imm instructions are restarted on restart
 pub fn restart_imm_test() {
     report_api(0x0133_0000);
 
     let mut pio_ss = PioSharedState::new();
+    pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
+
     let mut sm_a = pio_ss.alloc_sm().unwrap();
     let a_code = pio_proc::pio_asm!(
         "set pins, 1",
@@ -796,6 +913,9 @@ pub fn fifo_join_test() -> bool {
     report_api(0xF1F0_0000);
 
     let mut pio_ss = PioSharedState::new();
+    pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
+
     // test TX fifo with non-join. Simple program that just copies the TX fifo content to pins, then stalls.
     let mut sm_a = pio_ss.alloc_sm().unwrap();
     let a_code = pio_proc::pio_asm!(
@@ -1159,6 +1279,8 @@ pub fn register_tests() {
     report_api(0x1336_0000);
 
     let mut pio_ss = PioSharedState::new();
+    pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
 
     let mut sm_a = pio_ss.alloc_sm().unwrap();
     sm_a.pio.wo(rp_pio::SFR_CTRL, 0xFF0); // reset all state machines to a known state.
