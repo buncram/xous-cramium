@@ -606,6 +606,121 @@ pub fn corner_cases() {
     sm_a.sm_txfifo_push_u32(1 << ((30 + 9) % 32)); // this targeted set should clear the wait only if the wait is wrapping the inputs correctly
     wait_rx_or_fail(&mut sm_a, 10, None, None);
 
+    // autopush/pull cases ----------------------------------------------------
+    // 1. auto p/p does not happen while SM is disabled
+    // 2. auto pull happens on an EXEC, even when SM is disabled
+    //    a. case of EXEC is an instruction that would do a pull, but stalled instruction does not do pull
+    //    b. case of EXEC is an instruction that is NOP, but stalled instruction does do pull
+    // 3. OUT with empty OSR but nonempty TX FIFO should not set TX stall flag, + 1-cycle stall
+    // 4. EXEC of OUT 32 to disabled SM, with empty OSR + filled FIFO consumes two words from FIFO
+    pio_ss.clear_instruction_memory();
+    sm_a.sm_set_enabled(false);
+    report_api(0xcc00_bbbb);
+    let a_code = pio_proc::pio_asm!(
+        "  out x, 0",
+        "  in  x, 0",   // loop back for testing
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(3.0);
+    sm_a.config_set_out_shift(true, true, 32);
+    sm_a.config_set_in_shift(false, true, 32);
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos();
+
+    // sm is halted right now, but would do a pull if it were turned on
+    for i in 0..4 {
+        sm_a.sm_txfifo_push_u32(0xcc00_0000 + i);
+    }
+    // after four writes, the tx fifo should be full. if auto-pull were on, it would have
+    // pulled one entry and we wouldn't be full.
+    report_api(0xcc01_bbbb);
+    assert!(sm_a.sm_txfifo_is_full());
+
+    // this should cause an auto-pull, lowering the fifo level by 1
+    sm_a.sm_exec(pio_proc::pio_asm!("nop").program.code[0]);
+    report_api(0xcc02_bbbb);
+    // assert!(sm_a.sm_txfifo_level() == 3);
+
+    // reset the machine
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos();
+    // machine is still disabled
+    for i in 0..4 {
+        sm_a.sm_txfifo_push_u32(0xcc01_0000 + i);
+    }
+    // this should cause an auto-pull, lowering the fifo level by *2*
+    sm_a.sm_exec(pio_proc::pio_asm!("out x, 0").program.code[0]);
+    report_api(0xcc03_bbbb);
+    assert!(sm_a.sm_txfifo_level() == 2);
+
+    pio_ss.clear_instruction_memory();
+    sm_a.sm_set_enabled(false);
+    report_api(0xcc04_bbbb);
+    let a_code = pio_proc::pio_asm!(
+        "  wait 1 irq 0",  // this will do a wait
+        "  in  x, 0",
+        "  out x, 0",
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(3.0);
+    sm_a.config_set_out_shift(true, true, 32);
+    sm_a.config_set_in_shift(false, true, 32);
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos();
+    pio_ss.pio.wfo(rp_pio::SFR_FDEBUG_TXSTALL, 0xF); // clear the txstall register
+
+    // machine is not enabled
+    for i in 0..2 {
+        sm_a.sm_txfifo_push_u32(0xcc02_0000 + i);
+    }
+    report_api(0xcc05_bbbb);
+    assert!(pio_ss.pio.rf(rp_pio::SFR_FDEBUG_TXSTALL) == 0);
+    // case of OUT on instruction that does not do a pull, doing a pull when the machine is disabled
+    sm_a.sm_exec(pio_proc::pio_asm!("out x, 0").program.code[0]);
+    report_api(0xcc06_bbbb);
+    assert!(sm_a.sm_txfifo_level() == 0); // reduces by *2*, so we should have 0 items in the fifo
+    report_api(0xcc07_bbbb);
+    assert!(pio_ss.pio.rf(rp_pio::SFR_FDEBUG_TXSTALL) == 0);
+    sm_a.sm_set_enabled(true);
+    // should run ahead and ....
+    sm_a.sm_exec(pio_proc::pio_asm!("irq set 0").program.code[0]);
+    report_api(0xcc08_bbbb);
+    assert!(pio_ss.pio.rf(rp_pio::SFR_FDEBUG_TXSTALL) == 0);
+    sm_a.sm_exec(pio_proc::pio_asm!("irq set 0").program.code[0]);
+    // check that we got the two items we expected at this point
+    wait_rx_or_fail(&mut sm_a, 0xcc02_0000, None, None);
+    wait_rx_or_fail(&mut sm_a, 0xcc02_0001, None, None);
+    // confirm that TXSTALL is now set
+    assert!(pio_ss.pio.rf(rp_pio::SFR_FDEBUG_TXSTALL) == sm_a.sm_bitmask());
+
+    report_api(0xcc08_cccc);
+    pio_ss.clear_instruction_memory();
+    sm_a.sm_set_enabled(false);
+    let a_code = pio_proc::pio_asm!(
+        "  out x, 0",
+        "  in  x, 0",   // loop back for testing
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(13.0);
+    sm_a.config_set_out_shift(true, true, 32);
+    sm_a.config_set_in_shift(false, true, 32);
+    sm_a.sm_init(a_prog.entry());
+    sm_a.sm_clear_fifos();
+
+    // sm is halted right now, but would do a pull if it were turned on
+    for i in 0..4 {
+        sm_a.sm_txfifo_push_u32(0xcc00_0000 + i);
+    }
+    sm_a.sm_set_enabled(true);
+    // manual test to confirm OUT with empty OSR and nonempty TX FIFO experiences a
+    // 1-cycle stall as there's no bypass of FIFO through OSR: check with waveform browser here.
+
     report_api(0xcc00_600d);
 }
 fn rot_left(word: u32, count: u32) -> u32 {
