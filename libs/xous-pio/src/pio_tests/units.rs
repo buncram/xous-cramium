@@ -191,7 +191,7 @@ fn wait_gpio_or_fail(ss: &PioSharedState, pinval: u32, mask: Option<u32>, timeou
     let mut timeout = 0;
     loop {
         let outval = ss.pio.r(rp_pio::SFR_DBG_PADOUT);
-        if (outval & mask) == pinval {
+        if (outval & mask) == (pinval & mask) {
             report_api(outval);
             break;
         }
@@ -888,7 +888,7 @@ pub fn instruction_tests() {
     a_prog.setup_default_config(&mut sm_a);
     sm_a.config_set_clkdiv(2.0); // if this is set to 1.0 the "retrograde PC" check at the bottom needs to be commented out, because the PC moves too fast for the APB to reliably sample
     sm_a.config_set_out_shift(false, false, 32);
-    sm_a.config_set_in_shift(false, false, 32);
+    sm_a.config_set_in_shift(false, false, 16); // match to push iffull noblock expectations
     sm_a.sm_init(a_prog.entry());
     pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 0xFF); // clear all irqs for this test
     sm_a.sm_set_enabled(true);
@@ -915,6 +915,165 @@ pub fn instruction_tests() {
 
     pio_ss.clear_instruction_memory();
     pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
+    report_api(0x1c5f_2222);
+    // all the ISRs and OSRs (left shifting) -------------------------------------------------
+    let a_code = pio_proc::pio_asm!(
+        "start:",
+        "pull ifempty block",   // 09 get a value from the Tx FIFO -> OSR
+        "set x, 3",             // 0a prime the x value
+        "in osr, 2",            // 0b shift bottom 2 bits from the OSR into the IN
+        "in x, 3",              // 0c add a `011` pattern
+        "in isr, 5",            // 0d now double the pattern in the buffer
+        "push iffull block",    // 0e this should "do nothing", because the ISR is not full
+        "in null, 8",           // 0f this tops off the ISR
+        "push iffull block",    // 10 this should push the result into the Rx FIFO
+        "pull ifempty block",   // 11 this should not pull, because the ifempty condition is not met
+        "out null, 18",         // 12 setup the condition for the pull to happen
+        "pull ifempty block",   // 13 this *should* pull
+        "out isr, 16",          // 14 put top 16 bits into the ISR that were pulled in
+        "in null, 16",          // 15 shift those 16 bits to the left
+        "push iffull block",    // 16 return the shifted value back for inspection
+        "push block",           // 17 ISR isn't full, but push data anyways to fill up the rxfifo
+        "push block",           // 18 ISR isn't full, but push data anyways to fill up the rxfifo
+        "pull block",           // 19 put more data into the OSR, this time, a PC value. should be 0x1c
+        "out pc, 5",            // 1a shift top 5 bits into the PC.
+        "jmp start",            // 1b something that loops us back to the top if the out pc didn't do its thing
+        "set y, 13",            // 1c a value for reporting success
+        "mov isr, y",           // 1d put y into the ISR
+        "push block",           // 1e this should stall, until the Rx FIFO is drained. check that RXSTALL is set
+        "irq wait 7",           // 1f indicate done by hanging on the irq
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(2.0); // if this is set to 1.0 the "retrograde PC" check at the bottom needs to be commented out, because the PC moves too fast for the APB to reliably sample
+    sm_a.config_set_out_shift(false, false, 18);
+    sm_a.config_set_in_shift(false, false, 18);
+    sm_a.sm_init(a_prog.entry());
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 0xFF); // clear all irqs for this test
+    pio_ss.pio.wo(rp_pio::SFR_FDEBUG, 0xFFFF_FFFF); // clear all the stalls
+    sm_a.sm_set_enabled(true);
+
+    report_api(0x1c5f_2220);
+    wait_addr_or_fail(&sm_a, 0x9, None);
+    report_api(sm_a.pio.rf(rp_pio::SFR_FDEBUG_RXSTALL));
+    assert!(sm_a.pio.rf(rp_pio::SFR_FDEBUG_RXSTALL) == 0);
+    sm_a.sm_txfifo_push_u32(0x0000_0001); // inject '01' pattern for the expected outcome
+    sm_a.sm_txfifo_push_u32(0x1234_dead); // inject a pattern for the "out isr" test
+    sm_a.sm_txfifo_push_u32(0x1c << 27); // position the final PC jump value at the right location
+    let mut expected = 0b01;
+    expected = (expected << 3) | 0b11;
+    expected = expected | (expected << 5);
+    expected <<= 8;
+    report_api(0x1c5f_2221);
+
+    let expected2 = 0x1234_0000;
+    // wait until we block again on ISR not being full
+    report_api(0x1c5f_2225);
+
+    wait_addr_or_fail(&sm_a, 0x1e, None);
+    report_api(0x1c5f_2228);
+    assert!(sm_a.pio.rf(rp_pio::SFR_FDEBUG_RXSTALL) != 0);
+    report_api(0x1c5f_2229);
+    assert!(sm_a.pio.rf(rp_pio::SFR_IRQ_SFR_IRQ) == 0);
+
+    // pull values out for checking
+    report_api(0x1c5f_222a);
+    report_api(expected);
+    wait_rx_or_fail(&mut sm_a, expected, None, None);
+    report_api(expected2);
+    wait_rx_or_fail(&mut sm_a, expected2, None, None);
+    wait_rx_or_fail(&mut sm_a, 0, None, None);
+    wait_rx_or_fail(&mut sm_a, 0, None, None);
+    wait_rx_or_fail(&mut sm_a, 13, None, None);
+
+    // now wait for the final IRQ
+    report_api(0x1c5f_222b);
+    wait_irq_or_fail(&sm_a, 7, None);
+
+    pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
+    report_api(0x1c5f_3333);
+    // all the MOVs (plus right shifting) -------------------------------------------------
+    let a_code = pio_proc::pio_asm!(
+        "start:",
+        "pull block",
+        "mov isr, !osr",
+        "push block",   // this copies what's in the tx fifo to the rx fifo
+        "set x, 3",
+        "mov y, !x",
+        "in x, 3",
+        "in y, 3",
+        "push block",
+        "in x, 3",
+        "mov isr, isr",  // resets ISR count with out erasing values (check in waveform)
+        "pull block",
+        "out y 6",
+        "mov osr, osr",  // resets OSR count without erasing values (check in waveform)
+        "mov x, ::y",
+        "mov isr, x",
+        "mov osr, isr",
+        "mov pins, osr",
+        "irq wait 0",
+        "mov pins, !pins",
+        "irq wait 1",
+        "set x, 11",
+        "pull noblock",  // this should put X (11) into OSR
+        "mov isr, osr",
+        "push block",
+        "irq wait 2",
+        "exec_loop:",
+        "pull block",
+        "mov exec, osr",
+        "jmp exec_loop",
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(2.0); // if this is set to 1.0 the "retrograde PC" check at the bottom needs to be commented out, because the PC moves too fast for the APB to reliably sample
+    sm_a.config_set_out_shift(true, false, 6);
+    sm_a.config_set_in_shift(true, false, 6);
+    sm_a.config_set_out_pins(0, 32);
+    sm_a.config_set_in_pins(16);
+    sm_a.sm_init(a_prog.entry());
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 0xFF); // clear all irqs for this test
+    pio_ss.pio.wo(rp_pio::SFR_FDEBUG, 0xFFFF_FFFF); // clear all the stalls
+    sm_a.sm_set_enabled(true);
+
+    sm_a.sm_txfifo_push_u32(0x1234_abcd);
+    sm_a.sm_txfifo_push_u32(0b101_110 | 0xFF00_0000); // shifting right, so we'll take these LSBs; or something else at the top so we can detect if it shifted the other way
+    wait_irq_exactly_or_fail(&sm_a, 0, None);
+    wait_rx_or_fail(&mut sm_a, !0x1234_abcd, None, None);
+    wait_rx_or_fail(&mut sm_a, 0b100_011 << (32-6), None, None);
+    let gpio_val = 0b011_101 << (32-6);
+    wait_gpio_or_fail(&pio_ss, 0b011_101 << (32-6), None, None);
+    // clear the IRQ wait
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 0);
+
+    // pins <- pins mov test
+    wait_irq_exactly_or_fail(&sm_a, 1, None);
+    let rbk_val = !rot_left(gpio_val | 0xC, 16); // 0xC is or'd in due to the i2c loopback pins
+    report_api(rbk_val);
+    wait_gpio_or_fail(&pio_ss, rbk_val, Some(!0x8000_000C), None); // ignore the pins not looped back by the test bench (2,3,31)
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 1);
+
+    // pull noblock of empty Tx gives X test
+    wait_irq_exactly_or_fail(&sm_a, 2, None);
+    wait_rx_or_fail(&mut sm_a, 11, None, None);
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 2);
+
+    // this will effectively exec this instruction
+    sm_a.sm_txfifo_push_u32(pio_proc::pio_asm!("irq set 5").program.code[0] as u32);
+    wait_irq_exactly_or_fail(&sm_a, 5, None);
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 5);
+    // confirm we can do it again
+    sm_a.sm_txfifo_push_u32(pio_proc::pio_asm!("irq set 6").program.code[0] as u32);
+    wait_irq_exactly_or_fail(&sm_a, 6, None);
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 6);
+
+    pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
+
     report_api(0x1c5f_600d);
 }
 
