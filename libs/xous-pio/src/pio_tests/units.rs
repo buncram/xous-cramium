@@ -202,11 +202,22 @@ fn wait_gpio_or_fail(ss: &PioSharedState, pinval: u32, mask: Option<u32>, timeou
         }
     }
 }
-
+/// this routine will wait until at least the specified irq index is set
 fn wait_irq_or_fail(sm: &PioSm, irq_index: usize, timeout: Option<usize>) {
     let target = timeout.unwrap_or(1000);
     let mut timeout = 0;
     while (sm.pio.rf(rp_pio::SFR_IRQ_SFR_IRQ) & (1 << irq_index)) == 0 {
+        timeout += 1;
+        if timeout > target {
+            assert!(false);
+        }
+    }
+}
+/// this routine expects exactly just this one irq to be set; any other set is a failure
+fn wait_irq_exactly_or_fail(sm: &PioSm, irq_index: usize, timeout: Option<usize>) {
+    let target = timeout.unwrap_or(1000);
+    let mut timeout = 0;
+    while sm.pio.rf(rp_pio::SFR_IRQ_SFR_IRQ) != (1 << irq_index) {
         timeout += 1;
         if timeout > target {
             assert!(false);
@@ -838,7 +849,73 @@ pub fn instruction_tests() {
     }
 
     pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
+    report_api(0x1c5f_1111);
+    // all the jumps --------------------------------------------------------------
+    let a_code = pio_proc::pio_asm!(
+        "  set x, 3",
+        "test_notx:",
+        "  jmp !x, notx_done",
+        "  irq wait 0",    // we should have to clear irq 0 3 times
+        "  jmp x-- test_notx",
+        "notx_done:",
+        "  set y, 3",
+        "test_noty:",
+        "  jmp !y  noty_done",
+        "  irq wait 1",    // we should have to clear irq 1 3 times
+        "  jmp y-- test_noty",
+        "noty_done:",
+        "  set x, 7",
+        "test_noteq:",
+        "  set y, 7",
+        "  jmp x!=y noteq_done",
+        "  irq wait 2",    // we should have to clear irq 2 once
+        "  jmp x-- test_noteq",
+        "noteq_done:",
+        "  pull noblock",    // fifo is empty; this should put X=6 into the OSR and fill it to 32 bits
+        "osr_empty:",
+        "  out isr, 16",     // this will shift 16 bits into the ISR, shift_right = true so it goes 0, then 6
+        "  jmp !osre, osr_empty",  // loops back and gets another 16 bits
+        "  irq wait 3",      // we should have to clear irq 3 once
+        "  jmp finish",
+        "  jmp test_notx",   // this should never be run
+        "finish: ",
+        "  push iffull noblock", // rx fifo should get the value 6
+        "  irq wait 4",      // done once irq4 is set
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(2.0); // if this is set to 1.0 the "retrograde PC" check at the bottom needs to be commented out, because the PC moves too fast for the APB to reliably sample
+    sm_a.config_set_out_shift(false, false, 32);
+    sm_a.config_set_in_shift(false, false, 32);
+    sm_a.sm_init(a_prog.entry());
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 0xFF); // clear all irqs for this test
+    sm_a.sm_set_enabled(true);
 
+    // wait for 3 irq0's
+    for _ in 0..3 {
+        wait_irq_exactly_or_fail(&sm_a, 0, None);
+        pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 0);
+    }
+    // wait for 3 irq1's
+    for _ in 0..3 {
+        wait_irq_exactly_or_fail(&sm_a, 1, None);
+        pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 1);
+    }
+    // wait for 1 irq 2
+    wait_irq_exactly_or_fail(&sm_a, 2, None);
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 2);
+    // wait for 1 irq 3
+    wait_irq_exactly_or_fail(&sm_a, 3, None);
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 3);
+    // wait for 1 irq 4
+    wait_irq_exactly_or_fail(&sm_a, 4, None);
+    wait_rx_or_fail(&mut sm_a, 6, None, None);
+
+    pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
+    report_api(0x1c5f_600d);
 }
 
 /// test that stalled imm instructions are restarted on restart

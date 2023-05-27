@@ -24,8 +24,8 @@ pub fn report_api(d: u32) {
 }
 
 pub fn pio_tests() {
-    units::corner_cases();
     units::instruction_tests();
+    units::corner_cases();
     units::register_tests();
     units::restart_imm_test();
     units::fifo_join_test();
