@@ -76,6 +76,14 @@ impl SmConfig {
         }
     }
 }
+
+pub fn get_id() -> u32 {
+    let pio_ss = PioSharedState::new();
+    pio_tests::report_api(rp_pio::SFR_DBG_CFGINFO.offset() as u32);
+    pio_tests::report_api(rp_pio::HW_RP_PIO_BASE as u32);
+    pio_ss.pio.r(rp_pio::SFR_DBG_CFGINFO)
+}
+
 #[derive(Debug)]
 pub struct LoadedProg {
     program: Program::<RP2040_MAX_PROGRAM_SIZE>,
@@ -138,10 +146,19 @@ pub struct PioSharedState {
     used_machines: [bool; 4],
 }
 impl PioSharedState {
-    #[cfg(not(target_os="xous"))]
+    #[cfg(all(not(target_os="xous"),not(feature="rp2040")))]
     pub fn new() -> Self {
         PioSharedState {
             pio: CSR::new(rp_pio::HW_RP_PIO_BASE as *mut u32),
+            used_mask: 0,
+            used_machines: [false; 4],
+        }
+    }
+    #[cfg(all(not(target_os="xous"),feature="rp2040"))]
+    pub fn new() -> Self {
+        crate::pio_tests::report_api(0x5020_0000);
+        PioSharedState {
+            pio: CSR::new(0x5020_0000 as *mut u32),
             used_mask: 0,
             used_machines: [false; 4],
         }
@@ -204,8 +221,24 @@ impl PioSharedState {
             _ => return Err(PioError::InvalidSm),
         };
         self.used_machines[sm] = true;
+
+        #[cfg(target_os="xous")]
+        let csr = xous::syscall::map_memory(
+            xous::MemoryAddress::new(rp_pio::HW_RP_PIO_BASE),
+            None,
+            4096,
+            xous::MemoryFlags::R | xous::MemoryFlags::W,
+        )
+        .unwrap();
+        #[cfg(target_os="xous")]
+        let pio = CSR::new(csr.as_mut_ptr() as *mut u32);
+        #[cfg(all(not(target_os="xous"),not(feature="rp2040")))]
+        let pio = CSR::new(rp_pio::HW_RP_PIO_BASE as *mut u32);
+        #[cfg(all(not(target_os="xous"),feature="rp2040"))]
+        let pio = CSR::new(0x5020_0000 as *mut u32);
+
         Ok(PioSm {
-            pio: CSR::new(rp_pio::HW_RP_PIO_BASE as *mut u32),
+            pio,
             sm: sm_bit,
             config: SmConfig::default(),
         })

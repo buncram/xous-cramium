@@ -4,16 +4,16 @@ pub mod units;
 pub mod adder;
 pub mod nec;
 
-#[cfg(not(target_os="xous"))]
+#[cfg(not(any(target_os="xous", feature="rp2040")))]
 static mut REPORT_ADR: Option<*mut u32> = None;
 
-#[cfg(not(target_os="xous"))]
+#[cfg(not(any(target_os="xous", feature="rp2040")))]
 pub fn setup_reporting(rep_adr: *mut u32) {
     unsafe {REPORT_ADR = Some(rep_adr);}
 }
 
 pub fn report_api(d: u32) {
-    #[cfg(not(target_os="xous"))]
+    #[cfg(not(any(target_os="xous", feature="rp2040")))]
     unsafe {
         if let Some(rep_adr) = REPORT_ADR {
             rep_adr.write_volatile(d);
@@ -21,6 +21,8 @@ pub fn report_api(d: u32) {
     }
     #[cfg(target_os="xous")]
     log::info!("report: 0x{:x}", d);
+    #[cfg(feature="rp2040")]
+    defmt::info!("report: 0x{:x}", d);
 }
 
 pub fn pio_tests() {

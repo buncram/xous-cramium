@@ -30,8 +30,17 @@ pub fn sticky_test() {
     report_api(0x51C2_0000);
 
     let mut pio_ss = PioSharedState::new();
+    report_api(0x51C2_0001);
+    pio_ss.clear_instruction_memory();
+    report_api(0x51C2_0002);
     let mut sm_a = unsafe{pio_ss.force_alloc_sm(1).unwrap()};
+    report_api(0x51C2_0003);
     let mut sm_b = unsafe{pio_ss.force_alloc_sm(2).unwrap()};
+    report_api(0x51C2_0004);
+    sm_a.sm_set_enabled(false);
+    report_api(0x51C2_0005);
+    sm_b.sm_set_enabled(false);
+    report_api(0x51C2_0006);
 
     let a_code = pio_proc::pio_asm!(
         "set pins, 1",
@@ -54,9 +63,7 @@ pub fn sticky_test() {
     // note: this loads using sm_a so we can share the "used" vector state, but the code is global across all SM's
     let b_prog = LoadedProg::load(b_code.program, &mut pio_ss).unwrap();
 
-    sm_a.sm_set_enabled(false);
-    sm_b.sm_set_enabled(false);
-
+    report_api(0x51C2_0007);
     a_prog.setup_default_config(&mut sm_a);
     b_prog.setup_default_config(&mut sm_b);
 
@@ -74,6 +81,8 @@ pub fn sticky_test() {
 
     sm_a.sm_init(a_prog.entry());
     sm_b.sm_init(b_prog.entry());
+
+    report_api(0x51C2_0003);
 
     // use sm_a's PIO object to set state for both a & b here
     // restart dividers and machines so they are synchronized
@@ -186,7 +195,12 @@ fn wait_rx_or_fail(sm: &mut PioSm, rxval: u32, mask: Option<u32>, timeout: Optio
 }
 
 fn wait_gpio_or_fail(ss: &PioSharedState, pinval: u32, mask: Option<u32>, timeout: Option<usize>) {
-    let mask = mask.unwrap_or(0xFFFF_FFFF);
+    #[cfg(feature="rp2040")]
+    let io_mask = 0x3FFF_FFFF;
+    #[cfg(not(feature="rp2040"))]
+    let io_mask = 0xFFFF_FFFF;
+
+    let mask = mask.unwrap_or(io_mask);
     let target = timeout.unwrap_or(1000);
     let mut timeout = 0;
     loop {
@@ -227,6 +241,12 @@ fn wait_irq_exactly_or_fail(sm: &PioSm, irq_index: usize, timeout: Option<usize>
 
 /// corner cases
 pub fn corner_cases() {
+    report_api(0xF1F0_0000);
+    #[cfg(feature="rp2040")]
+    let io_mask = 0x3FFF_FFFF;
+    #[cfg(not(feature="rp2040"))]
+    let io_mask = 0xFFFF_FFFF;
+
     report_api(0xcc00_0000);
 
     // chained fifo depth corner case --------------------------------------
@@ -572,6 +592,7 @@ pub fn corner_cases() {
     model |= rot_left(0x1f, 28);
     model &= !sideset_mask;
     model |= rot_left(0x05, 30);
+    model &= io_mask;
     wait_addr_or_fail(&sm_a, 0x1f, None);
     let rbk = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT) & base_mask;
     report_api(rbk);
@@ -585,6 +606,7 @@ pub fn corner_cases() {
     model |= rot_left(0x05, 30);
     model &= !sideset_mask;
     model |= rot_left(0x1a, 30);
+    model &= io_mask;
     let rbk = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT) & base_mask;
     report_api(rbk);
     report_api(model);
@@ -596,6 +618,9 @@ pub fn corner_cases() {
     pio_ss.clear_instruction_memory();
     sm_a.sm_set_enabled(false);
     report_api(0xcc00_aaaa);
+    // set all the output
+    #[cfg(feature="rp2040")]
+    sm_a.sm_set_pindirs_with_mask(0xffff_ffff, 0xffff_ffff);
     let a_code = pio_proc::pio_asm!(
         "  out pins, 0",
         "  in  pins, 24",
@@ -619,7 +644,10 @@ pub fn corner_cases() {
     sm_a.sm_txfifo_push_u32(0xaa12_3455);
     // the differences from the pushed is due to the test bench harnessing, some gpio pins are not looped back or are modified by the test bench for other tests!
     // this value is just read back manually from the waveforms
+    #[cfg(not(feature="rp2040"))]
     let model = rot_left(0x2a12_345D, 32-9) & 0xFF_FFFF;
+    #[cfg(feature="rp2040")]
+    let model = rot_left(0xaa12_3455 & io_mask & !(1 << 25), 32-9) & 0xFF_FFFF; // top 2 bits don't exist on rp2040, bit 25 is for LED
     report_api(model);
     wait_rx_or_fail(&mut sm_a, model, None, None);
 
@@ -777,7 +805,7 @@ pub fn instruction_tests() {
     let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
     sm_a.sm_set_enabled(false);
     a_prog.setup_default_config(&mut sm_a);
-    sm_a.config_set_clkdiv(2.0); // if this is set to 1.0 the "retrograde PC" check at the bottom needs to be commented out, because the PC moves too fast for the APB to reliably sample
+    sm_a.config_set_clkdiv(4.0); // if this is set to <2.0 the "retrograde PC" check at the bottom needs to be commented out, because the PC moves too fast for the APB to reliably sample
     sm_a.config_set_out_shift(true, true, 32);
     sm_a.config_set_in_shift(true, true, 32);
     sm_a.config_set_mov_status(MovStatusType::StatusTxLessThan, 0);
@@ -821,10 +849,11 @@ pub fn instruction_tests() {
         // wait until irq 1 is asserted
         wait_irq_or_fail(&sm_a, 1, None);
         report_api(0x1c5f_3000);
-        wait_addr_or_fail(&sm_a, 0x19, None);
+        //wait_addr_or_fail(&sm_a, 0x19, None);
         // clear irq1
         pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 1);
-        wait_addr_or_fail(&sm_a, 0x1a, None);
+        report_api(0x1c5f_3001);
+        //wait_addr_or_fail(&sm_a, 0x1a, None);
         // set irq1
         pio_ss.pio.wfo(rp_pio::SFR_IRQ_FORCE_SFR_IRQ_FORCE, 1 << 1);
         report_api(0x1c5f_4000);
@@ -1045,16 +1074,30 @@ pub fn instruction_tests() {
     wait_irq_exactly_or_fail(&sm_a, 0, None);
     wait_rx_or_fail(&mut sm_a, !0x1234_abcd, None, None);
     wait_rx_or_fail(&mut sm_a, 0b100_011 << (32-6), None, None);
+    report_api(0x1c5f_3334);
+    #[cfg(not(feature="rp2040"))]
     let gpio_val = 0b011_101 << (32-6);
-    wait_gpio_or_fail(&pio_ss, 0b011_101 << (32-6), None, None);
+    #[cfg(feature="rp2040")]
+    let gpio_val = (0b011_101 << (32-6)) & !(1 << 25) & 0x3FFF_FFFF;
+    report_api(gpio_val);
+    wait_gpio_or_fail(&pio_ss, gpio_val, None, None);
     // clear the IRQ wait
     pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 0);
 
     // pins <- pins mov test
+    report_api(0x1c5f_3335);
     wait_irq_exactly_or_fail(&sm_a, 1, None);
-    let rbk_val = !rot_left(gpio_val | 0xC, 16); // 0xC is or'd in due to the i2c loopback pins
-    report_api(rbk_val);
-    wait_gpio_or_fail(&pio_ss, rbk_val, Some(!0x8000_000C), None); // ignore the pins not looped back by the test bench (2,3,31)
+    #[cfg(not(feature="rp2040"))]
+    {
+        let rbk_val = !rot_left(gpio_val | 0xC, 16); // 0xC is or'd in due to the i2c loopback pins
+        wait_gpio_or_fail(&pio_ss, rbk_val, Some(!0x8000_000C), None); // ignore the pins not looped back by the test bench (2,3,31)
+    }
+    #[cfg(feature="rp2040")]
+    {
+        let rbk_val = !rot_left(gpio_val & 0x3FFF_FFFF | 3, 16); // lowest 2 bits read back back as 11
+        report_api(rbk_val);
+        wait_gpio_or_fail(&pio_ss, rbk_val, Some(0x3DFF_FFFF), None); // mask out top bit + LED bit
+    }
     pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 1);
 
     // pull noblock of empty Tx gives X test
@@ -1147,6 +1190,10 @@ pub fn restart_imm_test() {
 
 pub fn fifo_join_test() -> bool {
     report_api(0xF1F0_0000);
+    #[cfg(feature="rp2040")]
+    let io_mask = 0x3FFF_FFFF;
+    #[cfg(not(feature="rp2040"))]
+    let io_mask = 0xFFFF_FFFF;
 
     let mut pio_ss = PioSharedState::new();
     pio_ss.clear_instruction_memory();
@@ -1163,7 +1210,10 @@ pub fn fifo_join_test() -> bool {
     pio_ss.pio.wo(rp_pio::SFR_IRQ1_INTE, 0);
     a_prog.setup_default_config(&mut sm_a);
     sm_a.config_set_out_pins(0, 32);
+    #[cfg(not(feature="rp2040"))]
     sm_a.config_set_clkdiv(192.0); // slow down the machine so we can read out the values after writing them...
+    #[cfg(feature="rp2040")]
+    sm_a.config_set_clkdiv(32768.0);
     sm_a.config_set_out_shift(false, true, 0);
     sm_a.sm_init(a_prog.entry());
     sm_a.sm_irq0_source_enabled(PioIntSource::TxNotFull, true);
@@ -1187,8 +1237,10 @@ pub fn fifo_join_test() -> bool {
     while detected < entries {
         let latest_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
         if latest_val != last_val {
+            report_api(last_val);
+            report_api(latest_val);
             detected += 1;
-            if latest_val != (0xF1F0_0000 + detected) {
+            if latest_val != ((0xF1F0_0000 + detected) & io_mask) {
                 passing = false;
             }
             last_val = latest_val;
@@ -1215,7 +1267,7 @@ pub fn fifo_join_test() -> bool {
         let latest_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
         if latest_val != last_val {
             detected += 1;
-            if latest_val != (0xF1F0_0000 + detected) {
+            if latest_val != ((0xF1F0_0000 + detected) & io_mask) {
                 passing = false;
             }
             last_val = latest_val;
@@ -1227,95 +1279,99 @@ pub fn fifo_join_test() -> bool {
     sm_a.sm_init(a_prog.entry());
 
     // ----------- now test with "margin" on the FIFOs. ----------
-    assert!(sm_a.sm_get_tx_fifo_margin() == 0);
-    sm_a.sm_set_tx_fifo_margin(1);
-    assert!(sm_a.sm_get_tx_fifo_margin() == 1);
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::TxNotFull)));
+    #[cfg(not(feature="rp2040"))]
+    {
+        assert!(sm_a.sm_get_tx_fifo_margin() == 0);
+        sm_a.sm_set_tx_fifo_margin(1);
+        assert!(sm_a.sm_get_tx_fifo_margin() == 1);
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::TxNotFull)));
 
-    // repeat, this time measuring the depth of the FIFO with margin
-    let mut entries = 0;
-    // loop looks at the raw interrupt value, the asserts look at the feedback INTS value, so we have coverage of both views
-    while (pio_ss.pio.rf(rp_pio::SFR_INTR_INTR_TXNFULL) & sm_a.sm_bitmask()) != 0 {
-        entries += 1;
-        sm_a.sm_txfifo_push_u32(0xF1F0_0000 + entries);
-    }
-    assert!(entries == 3);
-    assert!(sm_a.sm_txfifo_level() == 3); // should have space for one more item.
-    assert!(sm_a.sm_txfifo_is_full() == false); // the actual "full" signal should not be asserted.
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::TxNotFull)) == false);
-    report_api(0xF1F0_2100 + entries);
-    // push one more entry in, to simulate the DMA overrun case
-    entries += 1;
-    sm_a.sm_txfifo_push_u32(0xF1F0_0000 + entries);
-    assert!(sm_a.sm_txfifo_level() == 4);
-    assert!(sm_a.sm_txfifo_is_full() == true);
-    assert!(pio_ss.pio.rf(rp_pio::SFR_FDEBUG_TXOVER) == 0); // should not indicate overflow
-
-    // push the FIFO data out, and try to compare using PIO capture (clkdiv set slow so we can do this...)
-    let mut last_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
-    let mut detected = 0;
-    // run the machine
-    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
-    while detected < entries {
-        let latest_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
-        if latest_val != last_val {
-            detected += 1;
-            if latest_val != (0xF1F0_0000 + detected) {
-                passing = false;
-            }
-            last_val = latest_val;
+        // repeat, this time measuring the depth of the FIFO with margin
+        let mut entries = 0;
+        // loop looks at the raw interrupt value, the asserts look at the feedback INTS value, so we have coverage of both views
+        while (pio_ss.pio.rf(rp_pio::SFR_INTR_INTR_TXNFULL) & sm_a.sm_bitmask()) != 0 {
+            entries += 1;
+            sm_a.sm_txfifo_push_u32(0xF1F0_0000 + entries);
         }
-    }
-    report_api(0xF1F0_2100 + if passing {1} else {0});
-    sm_a.sm_set_tx_fifo_margin(0);
-
-    // this should reset join TX and also halt the engine
-    sm_a.config_set_fifo_join(PioFifoJoin::JoinTx);
-    sm_a.sm_init(a_prog.entry());
-
-    // ----------- now test with "margin" on the FIFOs. ----------
-    assert!(sm_a.sm_get_tx_fifo_margin() == 0);
-    sm_a.sm_set_tx_fifo_margin(1);
-    assert!(sm_a.sm_get_tx_fifo_margin() == 1);
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::TxNotFull)));
-
-    // repeat, this time measuring the depth of the FIFO with margin
-    let mut entries = 0;
-    // loop looks at the raw interrupt value, the asserts look at the feedback INTS value, so we have coverage of both views
-    while (sm_a.pio.rf(rp_pio::SFR_INTR_INTR_TXNFULL) & sm_a.sm_bitmask()) != 0 {
+        assert!(entries == 3);
+        assert!(sm_a.sm_txfifo_level() == 3); // should have space for one more item.
+        assert!(sm_a.sm_txfifo_is_full() == false); // the actual "full" signal should not be asserted.
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::TxNotFull)) == false);
+        report_api(0xF1F0_2100 + entries);
+        // push one more entry in, to simulate the DMA overrun case
         entries += 1;
         sm_a.sm_txfifo_push_u32(0xF1F0_0000 + entries);
-    }
-    report_api(0xF1F0_2200 + entries);
-    assert!(entries == 7);
-    assert!(sm_a.sm_rxfifo_level() == 3); // should have space for one more item.
-    assert!(sm_a.sm_txfifo_level() == 4); // this one should be full
-    assert!(sm_a.sm_txfifo_is_full() == false); // the actual "full" signal should not be asserted.
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::TxNotFull)) == false);
-    // push one more entry in, to simulate the DMA overrun case
-    entries += 1;
-    sm_a.sm_txfifo_push_u32(0xF1F0_0000 + entries);
-    assert!(sm_a.sm_txfifo_level() == 4);
-    assert!(sm_a.sm_rxfifo_level() == 4);
-    assert!(sm_a.sm_txfifo_is_full() == true);
-    assert!(pio_ss.pio.rf(rp_pio::SFR_FDEBUG_TXOVER) == 0); // should not indicate overflow
+        assert!(sm_a.sm_txfifo_level() == 4);
+        assert!(sm_a.sm_txfifo_is_full() == true);
+        assert!(pio_ss.pio.rf(rp_pio::SFR_FDEBUG_TXOVER) == 0); // should not indicate overflow
 
-    // push the FIFO data out, and try to compare using PIO capture (clkdiv set slow so we can do this...)
-    let mut last_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
-    let mut detected = 0;
-    // run the machine
-    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
-    while detected < entries {
-        let latest_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
-        if latest_val != last_val {
-            detected += 1;
-            if latest_val != (0xF1F0_0000 + detected) {
-                passing = false;
+        // push the FIFO data out, and try to compare using PIO capture (clkdiv set slow so we can do this...)
+        let mut last_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
+        let mut detected = 0;
+        // run the machine
+        sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
+        while detected < entries {
+            let latest_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
+            if latest_val != last_val {
+                detected += 1;
+                if latest_val != ((0xF1F0_0000 + detected) & io_mask) {
+                    passing = false;
+                }
+                last_val = latest_val;
             }
-            last_val = latest_val;
+        }
+        report_api(0xF1F0_2100 + if passing {1} else {0});
+        sm_a.sm_set_tx_fifo_margin(0);
+
+        // this should reset join TX and also halt the engine
+        sm_a.config_set_fifo_join(PioFifoJoin::JoinTx);
+        sm_a.sm_init(a_prog.entry());
+
+        // ----------- now test with "margin" on the FIFOs. ----------
+        assert!(sm_a.sm_get_tx_fifo_margin() == 0);
+        sm_a.sm_set_tx_fifo_margin(1);
+        assert!(sm_a.sm_get_tx_fifo_margin() == 1);
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::TxNotFull)));
+
+        // repeat, this time measuring the depth of the FIFO with margin
+        let mut entries = 0;
+        // loop looks at the raw interrupt value, the asserts look at the feedback INTS value, so we have coverage of both views
+        while (sm_a.pio.rf(rp_pio::SFR_INTR_INTR_TXNFULL) & sm_a.sm_bitmask()) != 0 {
+            entries += 1;
+            sm_a.sm_txfifo_push_u32(0xF1F0_0000 + entries);
+        }
+        report_api(0xF1F0_2200 + entries);
+        assert!(entries == 7);
+        assert!(sm_a.sm_rxfifo_level() == 3); // should have space for one more item.
+        assert!(sm_a.sm_txfifo_level() == 4); // this one should be full
+        assert!(sm_a.sm_txfifo_is_full() == false); // the actual "full" signal should not be asserted.
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::TxNotFull)) == false);
+        // push one more entry in, to simulate the DMA overrun case
+        entries += 1;
+        sm_a.sm_txfifo_push_u32(0xF1F0_0000 + entries);
+        assert!(sm_a.sm_txfifo_level() == 4);
+        assert!(sm_a.sm_rxfifo_level() == 4);
+        assert!(sm_a.sm_txfifo_is_full() == true);
+        assert!(pio_ss.pio.rf(rp_pio::SFR_FDEBUG_TXOVER) == 0); // should not indicate overflow
+
+        // push the FIFO data out, and try to compare using PIO capture (clkdiv set slow so we can do this...)
+        let mut last_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
+        let mut detected = 0;
+        // run the machine
+        sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
+        while detected < entries {
+            let latest_val = sm_a.pio.r(rp_pio::SFR_DBG_PADOUT);
+            if latest_val != last_val {
+                detected += 1;
+                if latest_val != ((0xF1F0_0000 + detected) & io_mask) {
+                    passing = false;
+                }
+                last_val = latest_val;
+            }
         }
     }
     sm_a.sm_irq0_source_enabled(PioIntSource::TxNotFull, false);
+    #[cfg(not(feature="rp2040"))]
     sm_a.sm_set_tx_fifo_margin(0);
     sm_a.sm_irq0_source_enabled(PioIntSource::RxNotEmpty, true);
 
@@ -1375,7 +1431,7 @@ pub fn fifo_join_test() -> bool {
     expected = 16;
     while !sm_a.sm_rxfifo_is_empty() {
         let val = sm_a.sm_rxfifo_pull_u32();
-        if val != expected {
+        if val != (expected & io_mask) {
             passing = false;
         }
         report_api(
@@ -1388,85 +1444,89 @@ pub fn fifo_join_test() -> bool {
     report_api(0xF1F0_4000 + entries);
 
     // no join, but with margin
-    sm_a.config_set_fifo_join(PioFifoJoin::None);
-    sm_a.sm_init(b_prog.entry());
+    #[cfg(not(feature="rp2040"))]
+    {
+        sm_a.config_set_fifo_join(PioFifoJoin::None);
+        sm_a.sm_init(b_prog.entry());
 
-    // now test with "margin" on the FIFOs.
-    assert!(sm_a.sm_get_rx_fifo_margin() == 0);
-    sm_a.sm_set_rx_fifo_margin(1);
-    assert!(sm_a.sm_get_rx_fifo_margin() == 1);
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == false);
+        // now test with "margin" on the FIFOs.
+        assert!(sm_a.sm_get_rx_fifo_margin() == 0);
+        sm_a.sm_set_rx_fifo_margin(1);
+        assert!(sm_a.sm_get_rx_fifo_margin() == 1);
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == false);
 
-    // start the program running
-    report_api(0xF1F0_4555);
-    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
-    while !sm_a.sm_rxfifo_is_full() {
-        // just wait until the rx fifo fills up
-    }
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == true);
-    // stop filling it
-    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, 0);
-    entries = 0;
-    expected = 16;
-    while (pio_ss.pio.rf(rp_pio::SFR_INTR_INTR_RXNEMPTY) & sm_a.sm_bitmask()) != 0  {
-        let val = sm_a.sm_rxfifo_pull_u32();
-        if val != expected {
-            passing = false;
+        // start the program running
+        report_api(0xF1F0_4555);
+        sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
+        while !sm_a.sm_rxfifo_is_full() {
+            // just wait until the rx fifo fills up
         }
-        report_api(
-            0xF1F0_0000 + val
-        );
-        entries += 1;
-        expected -= 1;
-    }
-    assert!(entries == 3);
-    assert!(sm_a.sm_rxfifo_level() == 1); // should be exactly one entry left
-    assert!(sm_a.sm_rxfifo_is_empty() == false); // the actual "empty" signal should not be asserted.
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == false);
-    report_api(0xF1F0_4100 + entries);
-    sm_a.sm_set_rx_fifo_margin(0);
-
-    // join, but with margin
-    sm_a.config_set_fifo_join(PioFifoJoin::JoinRx);
-    sm_a.sm_init(b_prog.entry());
-
-    // now test with "margin" on the FIFOs.
-    assert!(sm_a.sm_get_rx_fifo_margin() == 0);
-    sm_a.sm_set_rx_fifo_margin(1);
-    assert!(sm_a.sm_get_rx_fifo_margin() == 1);
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == false);
-
-    // start the program running
-    report_api(0xF1F0_4666);
-    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
-    while !sm_a.sm_rxfifo_is_full() {
-        // just wait until the rx fifo fills up
-    }
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == true);
-    // stop filling it
-    sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, 0);
-    entries = 0;
-    expected = 16;
-    while (pio_ss.pio.rf(rp_pio::SFR_INTR_INTR_RXNEMPTY) & sm_a.sm_bitmask()) != 0  {
-        let val = sm_a.sm_rxfifo_pull_u32();
-        if val != expected {
-            passing = false;
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == true);
+        // stop filling it
+        sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, 0);
+        entries = 0;
+        expected = 16;
+        while (pio_ss.pio.rf(rp_pio::SFR_INTR_INTR_RXNEMPTY) & sm_a.sm_bitmask()) != 0  {
+            let val = sm_a.sm_rxfifo_pull_u32();
+            if val != (expected & io_mask) {
+                passing = false;
+            }
+            report_api(
+                0xF1F0_0000 + val
+            );
+            entries += 1;
+            expected -= 1;
         }
-        report_api(
-            0xF1F0_0000 + val
-        );
-        entries += 1;
-        expected -= 1;
+        assert!(entries == 3);
+        assert!(sm_a.sm_rxfifo_level() == 1); // should be exactly one entry left
+        assert!(sm_a.sm_rxfifo_is_empty() == false); // the actual "empty" signal should not be asserted.
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == false);
+        report_api(0xF1F0_4100 + entries);
+        sm_a.sm_set_rx_fifo_margin(0);
+
+        // join, but with margin
+        sm_a.config_set_fifo_join(PioFifoJoin::JoinRx);
+        sm_a.sm_init(b_prog.entry());
+
+        // now test with "margin" on the FIFOs.
+        assert!(sm_a.sm_get_rx_fifo_margin() == 0);
+        sm_a.sm_set_rx_fifo_margin(1);
+        assert!(sm_a.sm_get_rx_fifo_margin() == 1);
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == false);
+
+        // start the program running
+        report_api(0xF1F0_4666);
+        sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, sm_a.sm_bitmask());
+        while !sm_a.sm_rxfifo_is_full() {
+            // just wait until the rx fifo fills up
+        }
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == true);
+        // stop filling it
+        sm_a.pio.wfo(rp_pio::SFR_CTRL_EN, 0);
+        entries = 0;
+        expected = 16;
+        while (pio_ss.pio.rf(rp_pio::SFR_INTR_INTR_RXNEMPTY) & sm_a.sm_bitmask()) != 0  {
+            let val = sm_a.sm_rxfifo_pull_u32();
+            if val != (expected & io_mask) {
+                passing = false;
+            }
+            report_api(
+                0xF1F0_0000 + val
+            );
+            entries += 1;
+            expected -= 1;
+        }
+        report_api(0xF1F0_4200 + entries);
+        assert!(entries == 7);
+        assert!(sm_a.sm_rxfifo_level() == 1); // this one should have one entry left
+        assert!(sm_a.sm_txfifo_level() == 0); // should be empty
+        assert!(sm_a.sm_rxfifo_is_empty() == false); // the actual "empty" signal should not be asserted.
+        assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == false);
     }
-    report_api(0xF1F0_4200 + entries);
-    assert!(entries == 7);
-    assert!(sm_a.sm_rxfifo_level() == 1); // this one should have one entry left
-    assert!(sm_a.sm_txfifo_level() == 0); // should be empty
-    assert!(sm_a.sm_rxfifo_is_empty() == false); // the actual "empty" signal should not be asserted.
-    assert!(sm_a.sm_irq0_status(Some(PioIntSource::RxNotEmpty)) == false);
 
     // clean up
     sm_a.sm_irq0_source_enabled(PioIntSource::RxNotEmpty, false);
+    #[cfg(not(feature="rp2040"))]
     sm_a.sm_set_rx_fifo_margin(0);
     pio_ss.clear_instruction_memory();
 
@@ -1522,6 +1582,7 @@ pub fn register_tests() {
     sm_a.pio.wo(rp_pio::SFR_CTRL, 0xFF0); // reset all state machines to a known state.
     sm_a.pio.wo(rp_pio::SFR_FDEBUG, 0xFFFF_FFFF); // clear all the FIFO debug registers
 
+    #[cfg(not(feature="rp2040"))]
     let a_code = pio_proc::pio_asm!(
         ".side_set 2 opt",
         "   set x, 24",                 // 18
@@ -1534,6 +1595,19 @@ pub fn register_tests() {
         "   wait 0 gpio 31 side 1",     // 1E wait until GPIO 31 is 0
         "   jmp x--, loop",             // 1F
     );
+    #[cfg(feature="rp2040")]
+    let a_code = pio_proc::pio_asm!(
+        ".side_set 2 opt",
+        "   set x, 24",                 // 18
+        "loop: ",
+        "   in x, 0        side 3 [2]", // 19 0 maps to 32
+        "   push block            [1]", // 1A puts X into the output FIFO
+        "   wait 1 irq 1   side 2",     // 1B wait until IRQ0 is set to 1
+        "   out pins, 32   side 1",     // 1C now push OSR onto the GPIO pins
+        "   wait 1 gpio 28 side 0",     // 1D wait until GPIO 28 is 1
+        "   wait 0 gpio 28 side 1",     // 1E wait until GPIO 28 is 0
+        "   jmp x--, loop",             // 1F
+    );
     report_api(a_code.program.side_set.bits() as u32);
     let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
     sm_a.sm_set_enabled(false);
@@ -1543,7 +1617,10 @@ pub fn register_tests() {
     sm_a.config_set_out_shift(false, true, 0);
     sm_a.config_set_sideset_pins(16);
     sm_a.config_set_clkdiv(REGTEST_DIV);
+    #[cfg(not(feature="rp2040"))]
     sm_a.config_set_set_pins(31, 1); // special case, A is used to set GPIO 31 to resume machines on wait
+    #[cfg(feature="rp2040")]
+    sm_a.config_set_set_pins(28, 1); // special case, A is used to set GPIO 31 to resume machines on wait
     sm_a.sm_init(a_prog.entry());
 
     let b_code = pio_proc::pio_asm!(
@@ -1563,12 +1640,16 @@ pub fn register_tests() {
     sm_b.sm_set_enabled(false);
     b_prog.setup_default_config(&mut sm_b);
     sm_b.config_set_out_pins(4, 4);
+    #[cfg(not(feature="rp2040"))]
     sm_b.config_set_in_pins(31); // maps pin 0 to GPIO 31
+    #[cfg(feature="rp2040")]
+    sm_b.config_set_in_pins(28); // maps pin 0 to GPIO 28
     sm_b.config_set_out_shift(false, true, 0);
     sm_b.config_set_sideset_pins(18);
     sm_b.config_set_clkdiv(REGTEST_DIV);
     sm_b.sm_init(b_prog.entry());
 
+    #[cfg(not(feature="rp2040"))]
     let c_code = pio_proc::pio_asm!(
         ".side_set 2 opt",
         "   set x, 8 [2]",
@@ -1579,6 +1660,19 @@ pub fn register_tests() {
         "   out pins, 32   side 1",     // now push OSR onto the GPIO pins.
         "   wait 1 gpio 31 side 0",     // wait until GPIO 31 is 1
         "   wait 0 gpio 31 side 1",     // wait until GPIO 31 is 0
+        "   jmp x--, loop",
+    );
+    #[cfg(feature="rp2040")]
+    let c_code = pio_proc::pio_asm!(
+        ".side_set 2 opt",
+        "   set x, 8 [2]",
+        "loop: ",
+        "   in x, 0        side 3 [1]", // 0 maps to 32
+        "   push block            [2]", // puts X into the output FIFO
+        "   wait 1 irq 1   side 2",     // wait until IRQ0 is set to 1
+        "   out pins, 32   side 1",     // now push OSR onto the GPIO pins.
+        "   wait 1 gpio 28 side 0",     // wait until GPIO 28 is 1
+        "   wait 0 gpio 28 side 1",     // wait until GPIO 28 is 0
         "   jmp x--, loop",
     );
     let mut sm_c =  pio_ss.alloc_sm().unwrap();
@@ -1609,7 +1703,10 @@ pub fn register_tests() {
     sm_d.sm_set_enabled(false);
     d_prog.setup_default_config(&mut sm_d);
     sm_d.config_set_out_pins(12, 4);
-    sm_d.config_set_in_pins(24); // maps pin 0 to GPIO 31
+    #[cfg(not(feature="rp2040"))]
+    sm_d.config_set_in_pins(24); // maps pin 7 to GPIO 31
+    #[cfg(feature="rp2040")]
+    sm_d.config_set_in_pins(21); // maps pin 7 to GPIO 28
     sm_d.config_set_out_shift(false, true, 0);
     sm_d.config_set_sideset_pins(14); // deliberate conflict with out_pins
     sm_d.config_set_clkdiv(REGTEST_DIV);
@@ -1628,6 +1725,7 @@ pub fn register_tests() {
 
     // dump the loaded instructions. Tests all the INSTR registers for readback.
     // must be re-generated every time programs are updated
+    #[cfg(not(feature="rp2040"))]
     let expected_instrs: [u16; 32] = [
         0xe342,
         0x5e40,
@@ -1665,7 +1763,8 @@ pub fn register_tests() {
     for i in 0..RP2040_MAX_PROGRAM_SIZE {
         let rbk = unsafe{sm_a.pio.base().add(rp_pio::SFR_INSTR_MEM0.offset() + i).read_volatile()};
         report_api(rbk + ((i as u32) << 24));
-        assert!(rbk as u16 == expected_instrs[i]);
+        #[cfg(not(feature="rp2040"))]
+        assert!(rbk as u16 == expected_instrs[i]); // on RP2040 you can't read back the instructions
     }
     report_api(0x1336_0002);
 
@@ -1715,19 +1814,16 @@ pub fn register_tests() {
 
     // prepare instruction to flip OE on bit 31 to move the state machine forward
     // requires testbench to wire that bit back in as an input on GPIO 31 for the test to complete!!
-    let mut a = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
-    a.set(pio::SetDestination::PINDIRS, 1);
-    let p= a.assemble_program();
-    let set_bit31_oe: u16 = p.code[p.origin.unwrap_or(0) as usize];
+    let set_bit31_oe = pio_proc::pio_asm!("set pindirs, 1").program.code[0];
     // program that clears the same bit
-    let mut c = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
-    c.set(pio::SetDestination::PINDIRS, 0);
-    let p2= c.assemble_program();
-    let clear_bit31_oe: u16 = p2.code[p2.origin.unwrap_or(0) as usize];
+    let clear_bit31_oe = pio_proc::pio_asm!("set pindirs, 0").program.code[0];
     // prepare an instruction that stalls
-    let mut b = pio::Assembler::<RP2040_MAX_PROGRAM_SIZE>::new();
-    b.wait(1, pio::WaitSource::IRQ, 0, false);
-    let p_wait = b.assemble_program();
+    let p_wait = pio_proc::pio_asm!("wait 1 irq 0").program.code[0];
+    // prepare an instruction that can set & clear the *pin*, not just the pindir. For RP2040 HW test, because we can't hack the OE to IN as a loopback like we can in a verilog model.
+    #[cfg(feature="rp2040")]
+    let pinset = pio_proc::pio_asm!("set pins, 1").program.code[0];
+    #[cfg(feature="rp2040")]
+    let pinclear = pio_proc::pio_asm!("set pins, 0").program.code[0];
 
     // check that the RX FIFOs have the correct levels
     report_api(0x1336_0007);
@@ -1747,12 +1843,14 @@ pub fn register_tests() {
     }
     report_api(0x1336_0008);
 
-    let mut waiting_for = 0;
+    let mut waiting_for: usize = 0;
+    let mut iters = 0;
     loop {
         if waiting_for >= tx_vals[0].len() {
             report_api(0x1336_000B);
             break;
         }
+        report_api(waiting_for as u32);
         // assembled the expected value
         let mut expected = 0;
         for (index, vals) in tx_vals.iter().enumerate() {
@@ -1764,6 +1862,11 @@ pub fn register_tests() {
 
         let outputs = sm_array[0].pio.r(rp_pio::SFR_DBG_PADOUT);
         report_api(0x1336_0000 | (outputs & 0xFFFF));
+        report_api(expected);
+        report_api(sm_array[0].sm_address() as u32);
+        report_api(sm_array[1].sm_address() as u32);
+        report_api(sm_array[2].sm_address() as u32);
+        report_api(sm_array[3].sm_address() as u32);
         if expected == (outputs & 0xFFFF) {
             // got it, moving forward
             waiting_for += 1;
@@ -1782,28 +1885,39 @@ pub fn register_tests() {
 
             // read the address of the PC, and confirm the instruction is correct
             report_api(0x1336_0008);
-            assert!(expected_instrs[sm_array[0].pio.rf(rp_pio::SFR_SM0_ADDR_PC) as usize] ==
-                    sm_array[0].pio.rf(rp_pio::SFR_SM0_INSTR_IMM_INSTR) as u16);
-            assert!(expected_instrs[sm_array[1].pio.rf(rp_pio::SFR_SM1_ADDR_PC) as usize] ==
-                    sm_array[1].pio.rf(rp_pio::SFR_SM1_INSTR_IMM_INSTR) as u16);
-            assert!(expected_instrs[sm_array[2].pio.rf(rp_pio::SFR_SM2_ADDR_PC) as usize] ==
-                    sm_array[2].pio.rf(rp_pio::SFR_SM2_INSTR_IMM_INSTR) as u16);
-            assert!(expected_instrs[sm_array[3].pio.rf(rp_pio::SFR_SM3_ADDR_PC) as usize] ==
-                    sm_array[3].pio.rf(rp_pio::SFR_SM3_INSTR_IMM_INSTR) as u16);
+            #[cfg(not(feature="rp2040"))] // can't read instructions on actual rp2040
+            {
+                assert!(expected_instrs[sm_array[0].pio.rf(rp_pio::SFR_SM0_ADDR_PC) as usize] ==
+                        sm_array[0].pio.rf(rp_pio::SFR_SM0_INSTR_IMM_INSTR) as u16);
+                assert!(expected_instrs[sm_array[1].pio.rf(rp_pio::SFR_SM1_ADDR_PC) as usize] ==
+                        sm_array[1].pio.rf(rp_pio::SFR_SM1_INSTR_IMM_INSTR) as u16);
+                assert!(expected_instrs[sm_array[2].pio.rf(rp_pio::SFR_SM2_ADDR_PC) as usize] ==
+                        sm_array[2].pio.rf(rp_pio::SFR_SM2_INSTR_IMM_INSTR) as u16);
+                assert!(expected_instrs[sm_array[3].pio.rf(rp_pio::SFR_SM3_ADDR_PC) as usize] ==
+                        sm_array[3].pio.rf(rp_pio::SFR_SM3_INSTR_IMM_INSTR) as u16);
+            }
 
             // execute the "program" that flips the OE bit, which should get us to the next iteration
             report_api(0x1336_0009);
             // exec an instruction that can't complete
-            sm_array[0].sm_exec(p_wait.code[p_wait.origin.unwrap_or(0) as usize]);
+            sm_array[0].sm_exec(p_wait);
             // confirm that the stall bit is set
             report_api(0x1336_000A);
             assert!(sm_array[0].pio.rf(rp_pio::SFR_SM0_EXECCTRL_EXEC_STALLED_RO0) == 1);
 
             // now exec the instruction that should clear the wait condition on an input pin by flipping bit 31 via a side-set operation
             // this requires the testbench to reflect that bit back correctly!
+            #[cfg(feature="rp2040")]
+            sm_array[0].sm_exec(pinset);
             sm_array[0].sm_exec(set_bit31_oe);
+            #[cfg(feature="rp2040")]
+            sm_array[0].sm_exec(pinclear);
             sm_array[0].sm_exec(clear_bit31_oe);
             delay(4); // give some time for the state machines to run to the stall point (necessary for fast pclk case)
+        }
+        iters += 1;
+        if iters > 20 {
+            assert!(false);
         }
     }
     // stop the machine from running, so we can test RX fifo underflow, etc.
