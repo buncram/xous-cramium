@@ -1114,6 +1114,55 @@ pub fn instruction_tests() {
     wait_irq_exactly_or_fail(&sm_a, 6, None);
     pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 1 << 6);
 
+    // check that decrements wrap around correctly --------------------------------------
+    pio_ss.clear_instruction_memory();
+    pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
+    report_api(0x1c5f_4444);
+    let a_code = pio_proc::pio_asm!(
+        "start:",
+        "  set x, 0",
+        "  jmp x--, dec1",
+        "dec1:",
+        "  mov isr, x",
+        "  push block",
+        "  jmp x--, dec2",
+        "dec2:",
+        "  mov isr, x",
+        "  push block",
+        "  mov y, !x",
+        "  jmp y--, inc1",
+        "inc1:",
+        "  mov x, !y",
+        "  mov isr, x",
+        "  push block",
+        "  jmp y--, inc2",
+        "inc2:",
+        "  mov x, !y",
+        "  mov isr, x",
+        "  push block",
+        "  jmp y--, inc3",
+        "inc3:",
+        "  mov x, !y",
+        "  mov isr, x",
+        "  push block",
+        "  irq wait 1",
+    );
+    let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
+    sm_a.sm_set_enabled(false);
+    a_prog.setup_default_config(&mut sm_a);
+    sm_a.config_set_clkdiv(2.0);
+    sm_a.config_set_out_shift(true, false, 32);
+    sm_a.config_set_in_shift(true, false, 32);
+    sm_a.sm_init(a_prog.entry());
+    pio_ss.pio.wfo(rp_pio::SFR_IRQ_SFR_IRQ, 0xFF); // clear all irqs for this test
+    sm_a.sm_set_enabled(true);
+
+    wait_rx_or_fail(&mut sm_a, u32::from_le_bytes((-1i32).to_le_bytes()), None, None);
+    wait_rx_or_fail(&mut sm_a, u32::from_le_bytes((-2i32).to_le_bytes()), None, None);
+    wait_rx_or_fail(&mut sm_a, u32::from_le_bytes((-1i32).to_le_bytes()), None, None);
+    wait_rx_or_fail(&mut sm_a, u32::from_le_bytes((0i32).to_le_bytes()), None, None);
+    wait_rx_or_fail(&mut sm_a, u32::from_le_bytes((1i32).to_le_bytes()), None, None);
+
     pio_ss.clear_instruction_memory();
     pio_ss.pio.rmwf(rp_pio::SFR_CTRL_EN, 0);
 
