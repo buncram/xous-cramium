@@ -805,7 +805,9 @@ pub fn instruction_tests() {
     let a_prog = LoadedProg::load(a_code.program, &mut pio_ss).unwrap();
     sm_a.sm_set_enabled(false);
     a_prog.setup_default_config(&mut sm_a);
-    sm_a.config_set_clkdiv(4.0); // if this is set to <2.0 the "retrograde PC" check at the bottom needs to be commented out, because the PC moves too fast for the APB to reliably sample
+    // if this is set to <2.0 the "retrograde PC" check at the bottom needs to be commented out, because the PC moves too fast for the APB to reliably sample
+    // also, this should not be an even multiple, otherwise we can end up sampling the exact same phase over and over again.
+    sm_a.config_set_clkdiv(5.0);
     sm_a.config_set_out_shift(true, true, 32);
     sm_a.config_set_in_shift(true, true, 32);
     sm_a.config_set_mov_status(MovStatusType::StatusTxLessThan, 0);
@@ -860,6 +862,7 @@ pub fn instruction_tests() {
         assert!(sm_a.sm_rxfifo_level() == 3);
         wait_rx_or_fail(&mut sm_a, 0x1c5f_0001, None, None);
         wait_rx_or_fail(&mut sm_a, 0x1c5f_0002, None, None);
+        report_api(expected_value);
         wait_rx_or_fail(&mut sm_a, expected_value, None, None);
         // retrograde movement of address would indicate we're in the loop (this might not work perfectly on real hardware due to synchronizers)
         wait_addr_or_fail(&sm_a, 31, None);
