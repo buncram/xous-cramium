@@ -238,7 +238,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "utralib",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-api-log",
  "xous-api-names",
  "xous-api-ticktimer",
@@ -796,7 +796,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "utralib",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-api-log",
  "xous-api-names",
  "xous-api-ticktimer",
@@ -810,7 +810,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "utralib",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-api-log",
  "xous-api-names",
  "xous-api-ticktimer",
@@ -1448,11 +1448,10 @@ dependencies = [
 
 [[package]]
 name = "svd2utra"
-version = "0.1.17"
+version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a17017dc85299398ec96405b495ea093403ef69252aabbc88a72dad27074a3b4"
+checksum = "2ba87b81de81a553ec5904993a676aa29d1583a4f6ab96e03f8b44e4d6c05a61"
 dependencies = [
- "convert_case",
  "quick-xml 0.28.2",
 ]
 
@@ -1577,7 +1576,7 @@ dependencies = [
  "log",
  "pem",
  "ring",
- "svd2utra 0.1.17",
+ "svd2utra 0.1.18",
  "xmas-elf",
  "xous-semver",
 ]
@@ -1652,7 +1651,7 @@ dependencies = [
 
 [[package]]
 name = "utralib"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "svd2utra 0.1.0",
 ]
@@ -1944,52 +1943,52 @@ dependencies = [
 
 [[package]]
 name = "xous"
-version = "0.9.30"
+version = "0.9.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72ac1d35325af0505ac3f492f928b2e2665f17353646ff7e7c3b09e833b12a84"
+checksum = "988ffa0937a8552d05bb8601359b71b600c4e5abf714293f0387f3c942dcd3d3"
 dependencies = [
  "lazy_static",
 ]
 
 [[package]]
 name = "xous-api-log"
-version = "0.1.25"
+version = "0.1.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2021b1e48cf6868a6ac46264cd14e037d7f536a8c237ad686bc186d0ea20721c"
+checksum = "2ea53718689b6c58db3708e422b4d201daf3b64eb658fc5c436ec8663fcf4ab7"
 dependencies = [
  "log",
  "num-derive",
  "num-traits",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-ipc",
 ]
 
 [[package]]
 name = "xous-api-names"
-version = "0.9.27"
+version = "0.9.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f907fef193079493a8fd76d6aefa2482b6d8aa905f99aaa40eb83893e13aa92"
+checksum = "0a922d07ed4dabdbeba270646ee12654f366e3ddb40b0e94769f79511a2df689"
 dependencies = [
  "log",
  "num-derive",
  "num-traits",
  "rkyv",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-api-log",
  "xous-ipc",
 ]
 
 [[package]]
 name = "xous-api-susres"
-version = "0.9.25"
+version = "0.9.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dfd6fba7d25640550ceabc6db360fd6b00a8bb2d973686adc873a4ca7a7da2b"
+checksum = "61570718107e51e0db9970756f62087e976ab7f60bcda780a46ffdbfd1077990"
 dependencies = [
  "log",
  "num-derive",
  "num-traits",
  "rkyv",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-api-log",
  "xous-api-names",
  "xous-ipc",
@@ -1997,13 +1996,13 @@ dependencies = [
 
 [[package]]
 name = "xous-api-ticktimer"
-version = "0.9.23"
+version = "0.9.41"
 dependencies = [
  "log",
  "num-derive",
  "num-traits",
  "rkyv",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-api-log",
  "xous-api-names",
  "xous-api-susres",
@@ -2013,13 +2012,13 @@ dependencies = [
 
 [[package]]
 name = "xous-ipc"
-version = "0.9.30"
+version = "0.9.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "062ff9e64e967c0a27b63dbd12f3ea4b958433728c813bbbf3bb1053bac47066"
+checksum = "efd9a02a79263e784da2488ee93573ba656ce71e72f1c3601de6df796675c65f"
 dependencies = [
  "bitflags",
  "rkyv",
- "xous 0.9.30",
+ "xous 0.9.47",
 ]
 
 [[package]]
@@ -2046,7 +2045,7 @@ dependencies = [
  "num-derive",
  "num-traits",
  "utralib",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-api-log",
  "xous-ipc",
 ]
@@ -2060,7 +2059,7 @@ dependencies = [
  "num-traits",
  "rkyv",
  "utralib",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-api-log",
  "xous-api-names",
  "xous-ipc",
@@ -2074,7 +2073,7 @@ dependencies = [
  "log",
  "pio",
  "pio-proc",
- "xous 0.9.30",
+ "xous 0.9.47",
 ]
 
 [[package]]
@@ -2102,7 +2101,7 @@ dependencies = [
  "num-traits",
  "rkyv",
  "utralib",
- "xous 0.9.30",
+ "xous 0.9.47",
  "xous-api-log",
  "xous-api-names",
  "xous-api-ticktimer",
@@ -2120,7 +2119,7 @@ dependencies = [
  "rustc_version 0.4.0",
  "serde",
  "serde_json",
- "svd2utra 0.1.17",
+ "svd2utra 0.1.18",
  "tempfile",
  "ureq",
  "zip",

@@ -47,7 +47,7 @@ const GUARD_MEMORY_BYTES: usize = 2 * PAGE_SIZE;
 
 const STACK_PAGE_COUNT: usize = 8;
 
-const VDBG: bool = false; // verbose debug
+const VDBG: bool = true; // verbose debug
 const VVDBG: bool = false; // very verbose debug
 
 #[cfg(test)]
