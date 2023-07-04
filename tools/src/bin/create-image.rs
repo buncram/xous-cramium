@@ -31,9 +31,11 @@ fn csr_to_config(hv: tools::utils::CsrConfig, ram_config: &mut RamConfig) {
     fn round_mem(src: u32) -> u32 {
         (src + 4095) & !4095
     }
-    // Look for the largest "ram" block, which we'll treat as main memory
+    // Look for the largest "sram" block, which we'll treat as main memory
+    // HACK: in xous-core, this is just looking for `ram`. However, this pattern
+    // matches against `reram` which is (a) bigger than `ram` and (b) not the right area.
     for (k, v) in &hv.regions {
-        if k.find("ram").is_some() && v.length > ram_config.size {
+        if k.find("sram").is_some() && v.length > ram_config.size {
             ram_config.size = round_mem(v.length);
             ram_config.offset = v.start;
             found_ram_name = Some(k.clone());
