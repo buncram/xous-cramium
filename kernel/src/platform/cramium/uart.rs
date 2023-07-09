@@ -2,14 +2,22 @@
 // SPDX-FileCopyrightText: 2022 Foundation Devices, Inc. <hello@foundationdevices.com>
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(feature="cramium-fpga")]
 use crate::{
     io::{SerialWrite, SerialRead},
     mem::MemoryManager,
     debug::shell::process_characters,
     PID,
 };
+#[cfg(feature="cramium-fpga")]
 use utralib::generated::*;
+#[cfg(feature="cramium-fpga")]
 use xous_kernel::{MemoryFlags, MemoryType};
+
+#[cfg(feature="cramium-soc")]
+use crate::{
+    io::{SerialWrite, SerialRead},
+};
 
 /// UART virtual address.
 ///
@@ -23,12 +31,14 @@ pub const IRQ0_ADDR: usize = UART_ADDR + 0x1000;
 pub static mut UART: Option<Uart> = None;
 
 /// UART peripheral driver.
+#[cfg(feature="cramium-fpga")]
 pub struct Uart {
     uart_csr: CSR<u32>,
     irq_csr: CSR<u32>,
     callback: fn(&mut Self),
 }
 
+#[cfg(feature="cramium-fpga")]
 impl Uart {
     pub fn new(addr: usize, irq_addr: usize, callback: fn(&mut Self)) -> Uart {
         Uart {
@@ -50,6 +60,7 @@ impl Uart {
     }
 }
 
+#[cfg(feature="cramium-fpga")]
 impl SerialWrite for Uart {
     fn putc(&mut self, c: u8) {
         // Wait until TXFULL is `0`
@@ -58,6 +69,7 @@ impl SerialWrite for Uart {
     }
 }
 
+#[cfg(feature="cramium-fpga")]
 impl SerialRead for Uart {
     fn getc(&mut self) -> Option<u8> {
         // If EV_PENDING_RX is 1, return the pending character.
@@ -75,6 +87,7 @@ impl SerialRead for Uart {
 }
 
 /// Initialize UART driver and debug shell.
+#[cfg(feature="cramium-fpga")]
 pub fn init() {
     // Map the UART peripheral.
     MemoryManager::with_mut(|memory_manager| {
@@ -117,5 +130,33 @@ pub fn init() {
             Uart::irq,
             (UART.as_mut().unwrap() as *mut Uart) as *mut usize,
         ).expect("Couldn't claim debug interrupt");
+    }
+}
+
+#[cfg(feature="cramium-soc")]
+pub fn init() {}  // there is no kernel UART yet...
+
+#[cfg(feature="cramium-soc")]
+pub struct Uart {
+}
+
+#[cfg(feature="cramium-soc")]
+impl Uart {
+    pub fn new(_addr: usize, _irq_addr: usize, _callback: fn(&mut Self)) -> Uart {
+        Uart {
+        }
+    }
+}
+
+#[cfg(feature="cramium-soc")]
+impl SerialWrite for Uart {
+    fn putc(&mut self, _c: u8) {
+    }
+}
+
+#[cfg(feature="cramium-soc")]
+impl SerialRead for Uart {
+    fn getc(&mut self) -> Option<u8> {
+        None
     }
 }

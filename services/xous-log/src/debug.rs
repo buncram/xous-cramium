@@ -41,6 +41,7 @@ pub static mut DEFAULT_UART_ADDR: *mut usize = 0x0000_0000 as *mut usize;
 
 pub const DEFAULT: Uart = Uart {};
 
+#[cfg(feature="cramium-fpga")]
 impl Uart {
     fn map_uart(&self) {
         /*
@@ -99,6 +100,49 @@ impl Uart {
                 c
             }
         }
+    }
+}
+
+#[cfg(feature="cramium-soc")]
+impl Uart {
+    fn map_uart(&self) {
+        /*
+           Note: the memory address and interrupt specified here needs to map to a unique hardware
+           UART resource. Modify in this function as necessary.
+        */
+        let uart = xous::syscall::map_memory(
+            xous::MemoryAddress::new(utra::duart::HW_DUART_BASE),
+            None,
+            4096,
+            xous::MemoryFlags::R | xous::MemoryFlags::W,
+        )
+        .expect("couldn't map debug uart");
+        unsafe {
+            DEFAULT_UART_ADDR = uart.as_mut_ptr() as _;
+        }
+        println!("Mapped UART @ {:08x}", uart.as_ptr() as usize);
+        let mut uart_csr = CSR::new(unsafe { DEFAULT_UART_ADDR as *mut u32 });
+        uart_csr.wfo(utra::duart::SFR_CR_SFR_CR, 1); // enable the duart
+    }
+
+    pub fn putc(&self, c: u8) {
+        if unsafe { DEFAULT_UART_ADDR } as usize == 0 {
+            self.map_uart();
+        }
+        let mut uart_csr = CSR::new(unsafe { DEFAULT_UART_ADDR as *mut u32 });
+
+        // Wait until TXFULL is `0`
+        while uart_csr.r(utra::duart::SFR_SR) != 0 {}
+        uart_csr.wo(utra::duart::SFR_TXD, c as u32);
+    }
+
+    #[allow(dead_code)]
+    pub fn enable_rx(&self) {
+        unimplemented!()
+    }
+    #[allow(dead_code)]
+    pub fn getc(&self) -> Option<u8> {
+        unimplemented!();
     }
 }
 

@@ -3,6 +3,7 @@ fn main() {
     log_server::init_wait().unwrap();
     log::set_max_level(log::LevelFilter::Info);
 
+    #[cfg(feature="hwsim")]
     let csr = xous::syscall::map_memory(
         xous::MemoryAddress::new(utra::main::HW_MAIN_BASE),
         None,
@@ -10,7 +11,9 @@ fn main() {
         xous::MemoryFlags::R | xous::MemoryFlags::W,
     )
     .expect("couldn't map Core Control CSR range");
-    let mut core_csr = CSR::new(csr.as_mut_ptr() as *mut u32);
+    #[cfg(feature="hwsim")]
+    let mut core_csr = Some(CSR::new(csr.as_mut_ptr() as *mut u32));
+
     #[cfg(feature="hwsim")]
     core_csr.wfo(utra::main::REPORT_REPORT, 0x600d_0000);
 
@@ -61,6 +64,7 @@ fn main() {
     let tt = xous_api_ticktimer::Ticktimer::new().unwrap();
     let mut total = 0;
     let mut iter = 0;
+    log::info!("running message passing test");
     loop {
         // this conjures a scalar message
         #[cfg(feature="hwsim")]
@@ -96,6 +100,7 @@ fn main() {
         iter += 1;
         #[cfg(feature="hwsim")]
         core_csr.wfo(utra::main::REPORT_REPORT, now as u32);
+        log::info!("message passing test progress: {}ms", tt.elapsed_ms());
     }
     #[cfg(feature="hwsim")]
     core_csr.wfo(utra::main::REPORT_REPORT, 0x6969_6969);
@@ -108,4 +113,5 @@ fn main() {
     tt.sleep_ms(4).ok();
     #[cfg(feature="hwsim")]
     core_csr.wfo(utra::main::DONE_DONE, 1); // this should stop the simulation
+    log::info!("message passing test done at {}ms!", tt.elapsed_ms());
 }

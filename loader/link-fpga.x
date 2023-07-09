@@ -3,7 +3,6 @@ MEMORY
   /* we are using an unsigned loader, so the offset is not 1k offset */
   FLASH : ORIGIN = 0x60500000, LENGTH = 32k
   RAM : ORIGIN = 0x61000000, LENGTH = 16M
-  MEMLCD : ORIGIN = 0x42000000, LENGTH = 32k
 }
 /*
 Fonts go from 0x2053_0000 to 0x2097_0000
@@ -16,7 +15,6 @@ REGION_ALIAS("REGION_BSS", RAM);
 REGION_ALIAS("REGION_STACK", RAM);
 REGION_ALIAS("REGION_HEAP", RAM);
 
-_lcdfb = ORIGIN(MEMLCD);
 /* Size of the main kernel stack */
 _stack_size = 16K;
 _eheap = ORIGIN(RAM) + LENGTH(RAM);

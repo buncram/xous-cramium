@@ -17,4 +17,4 @@ cramium-fpga = []
 hosted = []
 renode = []
 precursor = [] # dummy for kernel feature that is not used
-default = ["cramium-soc"]
+default = []

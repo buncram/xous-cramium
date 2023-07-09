@@ -216,10 +216,19 @@ impl Builder {
     /// Configure for precursor targets. This is the default, but it's good practice
     /// to call it anyways just in case the defaults change. The `soc_version` should
     /// be just the gitrev of the soc version, not the entire feature name.
-    pub fn target_cramium<'a>(&'a mut self) -> &'a mut Builder {
+    pub fn target_cramium_fpga<'a>(&'a mut self) -> &'a mut Builder {
         self.target = Some(crate::TARGET_TRIPLE.to_string());
         self.stream = BuildStream::Release;
         self.utra_target = "cramium-fpga".to_string();
+        self.run_svd2repl = false;
+        self.loader = CrateSpec::Local("loader".to_string(), false);
+        self.kernel = CrateSpec::Local("xous-kernel".to_string(), false);
+        self
+    }
+    pub fn target_cramium_soc<'a>(&'a mut self) -> &'a mut Builder {
+        self.target = Some(crate::TARGET_TRIPLE.to_string());
+        self.stream = BuildStream::Release;
+        self.utra_target = "cramium-soc".to_string();
         self.run_svd2repl = false;
         self.loader = CrateSpec::Local("loader".to_string(), false);
         self.kernel = CrateSpec::Local("xous-kernel".to_string(), false);
@@ -500,6 +509,14 @@ impl Builder {
             self.kernel_features.push("cramium-fpga".into());
             self.kernel_features.push(format!("utralib/{}", &self.utra_target));
             self.loader_features.push("cramium-fpga".into());
+            self.loader_features.push(format!("utralib/{}", &self.utra_target));
+            Some(crate::TARGET_TRIPLE)
+        } else if self.utra_target.contains("cramium-soc") {
+            self.features.push("cramium-soc".into());
+            self.features.push(format!("utralib/{}", &self.utra_target));
+            self.kernel_features.push("cramium-soc".into());
+            self.kernel_features.push(format!("utralib/{}", &self.utra_target));
+            self.loader_features.push("cramium-soc".into());
             self.loader_features.push(format!("utralib/{}", &self.utra_target));
             Some(crate::TARGET_TRIPLE)
         } else {

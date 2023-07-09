@@ -121,6 +121,7 @@ mod implementation {
 
     pub fn init() -> Output {
         if cfg!(feature = "logging") {
+            #[cfg(feature="cramium-fpga")]
             let uart = xous::syscall::map_memory(
                 xous::MemoryAddress::new(utra::console::HW_CONSOLE_BASE),
                 None,
@@ -128,7 +129,16 @@ mod implementation {
                 xous::MemoryFlags::R | xous::MemoryFlags::W,
             )
             .expect("couldn't map serial port");
-            unsafe { crate::debug::DEFAULT_UART_ADDR = uart.as_mut_ptr() as _ };
+        // TODO: migrate this to a "proper" UART that is available on SoC hardware, but for now all we have access to is the DUART.
+        #[cfg(feature="cramium-soc")]
+        let uart = xous::syscall::map_memory(
+            xous::MemoryAddress::new(utra::duart::HW_DUART_BASE),
+            None,
+            4096,
+            xous::MemoryFlags::R | xous::MemoryFlags::W,
+        )
+        .expect("couldn't map serial port");
+        unsafe { crate::debug::DEFAULT_UART_ADDR = uart.as_mut_ptr() as _ };
             println!("Mapped UART @ {:08x}", uart.as_ptr() as usize);
             println!("Process: map success!");
 
@@ -211,12 +221,25 @@ mod implementation {
 
     impl OutputWriter {
         pub fn putc(&self, c: u8) {
+            #[cfg(feature="cramium-fpga")]
             if cfg!(feature = "logging") {
                 let mut uart_csr = CSR::new(unsafe { crate::debug::DEFAULT_UART_ADDR as *mut u32 });
 
                 // Wait until TXFULL is `0`
                 while uart_csr.r(utra::uart::TXFULL) != 0 {}
                 uart_csr.wo(utra::uart::RXTX, c as u32);
+
+                // there's a race condition in the handler, if a new character comes in while handling the interrupt,
+                // the pending bit never clears. If the console seems to freeze, uncomment this line.
+                // This kind of works around that, at the expense of maybe losing some Rx characters.
+                // uart_csr.wfo(utra::uart::EV_PENDING_RX, 1);
+            }
+            #[cfg(feature="cramium-soc")]
+            if cfg!(feature = "logging") {
+                let mut uart_csr = CSR::new(unsafe { crate::debug::DEFAULT_UART_ADDR as *mut u32 });
+
+                while uart_csr.r(utra::duart::SFR_SR) != 0 {}
+                uart_csr.wo(utra::duart::SFR_TXD, c as u32);
 
                 // there's a race condition in the handler, if a new character comes in while handling the interrupt,
                 // the pending bit never clears. If the console seems to freeze, uncomment this line.

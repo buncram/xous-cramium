@@ -60,6 +60,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     builder.add_services(&extra_services);
     // extract features, and especially track language features
     let features = get_flag("--feature")?;
+    if features.iter().find(|&s| *s == "cramium-fpga").is_some() {
+        builder.target_cramium_fpga();
+        builder.add_kernel_feature("cramium-fpga");
+        assert!(features.iter().find(|&s| *s == "cramium-soc").is_none(), "Both fpga and soc flags were present, hard error!");
+    } else if features.iter().find(|&s| *s == "cramium-soc").is_some() {
+        builder.target_cramium_soc();
+        builder.add_kernel_feature("cramium-soc");
+    } else {
+        print!("\n\n**** Warning: neither cramium-fpga or cramium-soc features specified. Build is likely to break! ****\n\n");
+    }
     let mut language_set = false;
     for feature in features {
         builder.add_feature(&feature);
@@ -120,8 +130,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // ------ Precursor hardware image configs ------
         Some("hw-image") => {
-            builder.target_cramium()
-                   .add_services(&get_cratespecs());
+            builder.add_services(&get_cratespecs());
             for service in user_pkgs {
                 builder.add_service(service, true);
             }
@@ -134,8 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // builder.add_service("./com", true);
         }
         Some("mbox-image") => {
-            builder.target_cramium()
-                   .add_services(&get_cratespecs());
+            builder.add_services(&get_cratespecs());
             for service in mbox_pkgs {
                 builder.add_service(service, true);
             }

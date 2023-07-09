@@ -69,6 +69,9 @@ pub struct PageTable {
 /// This function is safe to call exactly once.
 #[export_name = "rust_entry"]
 pub unsafe extern "C" fn rust_entry(signed_buffer: *const usize, signature: u32) -> ! {
+    #[cfg(feature="cramium-soc")]
+    crate::platform::early_init(); // sets up PLLs so we're not running at 16MHz...
+
     // initially validate the whole image on disk (including kernel args)
     // kernel args must be validated because tampering with them can change critical assumptions about
     // how data is loaded into memory
@@ -222,9 +225,12 @@ fn boot_sequence(args: KernelArguments, _signature: u32) -> ! {
 
         #[cfg(not(feature = "atsama5d27"))]
         {
-            use utralib::generated::*;
-            let mut gpio_csr = CSR::new(utra::gpio::HW_GPIO_BASE as *mut u32);
-            gpio_csr.wfo(utra::gpio::UARTSEL_UARTSEL, 1); // patch us over to a different UART for debug (1=LOG 2=APP, 0=KERNEL(hw reset default))
+            #[cfg(not(feature="cramium-soc"))]
+            { // uart mux only exists on the FPGA variant
+                use utralib::generated::*;
+                let mut gpio_csr = CSR::new(utra::gpio::HW_GPIO_BASE as *mut u32);
+                gpio_csr.wfo(utra::gpio::UARTSEL_UARTSEL, 1); // patch us over to a different UART for debug (1=LOG 2=APP, 0=KERNEL(hw reset default))
+            }
 
             start_kernel(
                 arg_offset,

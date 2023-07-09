@@ -40,6 +40,7 @@ report-memory = ["stats_alloc"]
 wrap-print = []
 v2p = ["xous-kernel/v2p"]
 hwsim = []
+fake-rng = [] # works around lack of a real TRNG in the full-chip sim for now. This should go away for production.
 # default = ["print-panics", "debug-print", "wrap-print"]
 default = ["print-panics"]
 

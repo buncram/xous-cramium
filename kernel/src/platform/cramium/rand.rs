@@ -2,32 +2,32 @@
 // SPDX-FileCopyrightText: 2022 Foundation Devices, Inc. <hello@foundationdevices.com>
 // SPDX-License-Identifier: Apache-2.0
 
-#[cfg(not(feature="hwsim"))]
+#[cfg(not(feature="fake-rng"))]
 use crate::mem::MemoryManager;
-#[cfg(not(feature="hwsim"))]
+#[cfg(not(feature="fake-rng"))]
 use utralib::generated::*;
-#[cfg(not(feature="hwsim"))]
+#[cfg(not(feature="fake-rng"))]
 use xous_kernel::{MemoryFlags, MemoryType, PID};
 
 /// The manually chosen virtual address has to be in the top 4MiB as it is the
 /// only page shared among all processes.
 ///
 /// See https://github.com/betrusted-io/xous-core/blob/master/docs/memory.md
-#[cfg(not(feature="hwsim"))]
+#[cfg(not(feature="fake-rng"))]
 pub const TRNG_KERNEL_ADDR: usize = 0xffce_0000;
-#[cfg(not(feature="hwsim"))]
+#[cfg(not(feature="fake-rng"))]
 pub static mut TRNG_KERNEL: Option<TrngKernel> = None;
-#[cfg(feature="hwsim")]
+#[cfg(feature="fake-rng")]
 use core::sync::atomic::{AtomicU32, Ordering};
-#[cfg(feature="hwsim")]
+#[cfg(feature="fake-rng")]
 static LOCAL_RNG_STATE: AtomicU32 = AtomicU32::new(2);
 
-#[cfg(not(feature="hwsim"))]
+#[cfg(not(feature="fake-rng"))]
 pub struct TrngKernel {
     pub trng_kernel_csr: CSR<u32>,
 }
 
-#[cfg(not(feature="hwsim"))]
+#[cfg(not(feature="fake-rng"))]
 impl TrngKernel {
     pub fn new(addr: usize) -> TrngKernel {
         TrngKernel {
@@ -68,7 +68,7 @@ impl TrngKernel {
 /// Initialize TRNG driver.
 ///
 /// Needed so that the kernel can allocate names.
-#[cfg(not(feature="hwsim"))]
+#[cfg(not(feature="fake-rng"))]
 pub fn init() {
     // Map the TRNG so that we can allocate names
     // hardware guarantees that:
@@ -99,7 +99,7 @@ pub fn init() {
 }
 
 /// Retrieve random `u32`.
-#[cfg(not(feature="hwsim"))]
+#[cfg(not(feature="fake-rng"))]
 pub fn get_u32() -> u32 {
     unsafe {
         TRNG_KERNEL
@@ -112,11 +112,11 @@ pub fn get_u32() -> u32 {
 /// Initialize TRNG driver.
 ///
 /// Needed so that the kernel can allocate names.
-#[cfg(feature="hwsim")]
+#[cfg(feature="fake-rng")]
 pub fn init() {
 }
 
-#[cfg(feature="hwsim")]
+#[cfg(feature="fake-rng")]
 pub fn get_u32() -> u32 {
     use rand_chacha::ChaCha8Rng;
     use rand_chacha::rand_core::RngCore;

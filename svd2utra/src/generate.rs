@@ -468,9 +468,20 @@ fn parse_memory_regions<T: BufRead>(
     loop {
         match reader.read_event(&mut buf) {
             Ok(Event::Start(ref e)) => match e.name() {
-                b"memoryRegion" => description
+                b"memoryRegion" => {
+                    let mut mr = generate_memory_region(reader)?;
+                    // keep adding _ to the end of the name until it's unique
+                    loop {
+                        if description.memory_regions.iter().find(|&m| m.name == mr.name).is_some() {
+                            mr.name.push_str("_");
+                            continue;
+                        }
+                        break;
+                    }
+                    description
                     .memory_regions
-                    .push(generate_memory_region(reader)?),
+                    .push(mr)
+                },
                 _ => panic!("unexpected tag in <memoryRegions>: {:?}", e),
             },
             Ok(Event::End(ref e)) => match e.name() {
@@ -513,6 +524,14 @@ fn generate_constants<T: BufRead>(
                             }
                             _ => panic!("unexpected value in constant: {:?}", maybe_att),
                         }
+                    }
+                    // keep adding _ to the end of the name until it's unique
+                    loop {
+                        if description.constants.iter().find(|&c| c.name == constant_descriptor.name).is_some() {
+                            constant_descriptor.name.push_str("_");
+                            continue;
+                        }
+                        break;
                     }
                     description.constants.push(constant_descriptor)
                 }
@@ -1024,7 +1043,6 @@ mod tests {
 
 pub fn parse_svd<T: Read>(sources: Vec::<T>) -> Result<Description, ParseError> {
     let mut description = Description::default();
-    let mut first = true;
     for src in sources {
         let mut buf = Vec::new();
         let buf_reader = BufReader::new(src);
@@ -1036,9 +1054,7 @@ pub fn parse_svd<T: Read>(sources: Vec::<T>) -> Result<Description, ParseError> 
                         description.peripherals.append(&mut generate_peripherals(&mut reader)?);
                     }
                     b"vendorExtensions" => {
-                        if first { // this is a bodge to only take one set of extensions. In this case, just the first file in the list takes priority.
-                            parse_vendor_extensions(&mut reader, &mut description)?;
-                        }
+                        parse_vendor_extensions(&mut reader, &mut description)?;
                     }
                     _ => (),
                 },
@@ -1048,7 +1064,6 @@ pub fn parse_svd<T: Read>(sources: Vec::<T>) -> Result<Description, ParseError> 
             }
             buf.clear();
         }
-        first = false;
     }
     Ok(description)
 }

@@ -16,6 +16,8 @@ xous-pio = {path = "../../libs/xous-pio", optional = true}
 
 [features]
 "cramium" = []
+"cramium-fpga" = []
+"cramium-soc" = []
 "hwsim" = []
 "pio-test" = ["xous-pio"]
-default = ["cramium", "pio-test", "hwsim"]
+default = ["cramium"]
