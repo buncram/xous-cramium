@@ -17,6 +17,7 @@ use xous_kernel::{MemoryFlags, MemoryType};
 #[cfg(feature="cramium-soc")]
 use crate::{
     io::{SerialWrite, SerialRead},
+    debug::shell::process_characters,
 };
 
 /// UART virtual address.
@@ -26,7 +27,7 @@ pub const UART_ADDR: usize = 0xffcf_0000;
 pub const IRQ0_ADDR: usize = UART_ADDR + 0x1000;
 
 /// UART instance.
-/// 
+///
 /// Initialized by [`init`].
 pub static mut UART: Option<Uart> = None;
 
@@ -134,7 +135,13 @@ pub fn init() {
 }
 
 #[cfg(feature="cramium-soc")]
-pub fn init() {}  // there is no kernel UART yet...
+pub fn init() {   // there is no kernel UART yet...just a placeholder function
+    let uart = Uart::new(UART_ADDR, IRQ0_ADDR, process_characters);
+    unsafe{
+        UART = Some(uart);
+        crate::debug::shell::init(UART.as_mut().unwrap());
+    }
+}
 
 #[cfg(feature="cramium-soc")]
 pub struct Uart {

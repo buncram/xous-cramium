@@ -43,12 +43,13 @@ fn csr_to_config(hv: tools::utils::CsrConfig, ram_config: &mut RamConfig) {
     }
 
     if found_ram_name.is_none() {
-        eprintln!("Error: Couldn't find a memory region named \"ram\" in config file");
+        eprintln!("Error: Couldn't find a memory region named \"sram\" in config file");
         return;
     }
 
     // Now that we know which block is ram, add the other regions.
     let found_ram_name = MemoryRegion::make_name(&found_ram_name.unwrap());
+    let mut raw_regions = Vec::<MemoryRegion>::new();
     for (k, v) in &hv.regions {
         ram_config.memory_required += round_mem(v.length) / 4096;
         let region_name = MemoryRegion::make_name(k);
@@ -61,10 +62,22 @@ fn csr_to_config(hv: tools::utils::CsrConfig, ram_config: &mut RamConfig) {
         if round_mem(v.length) == 0 {
             continue;
         }
-        ram_config
-            .regions
-            .add(MemoryRegion::new(v.start, round_mem(v.length), region_name));
+        raw_regions.push(MemoryRegion::new(v.start, round_mem(v.length), region_name));
+        // ram_config
+        //    .regions
+        //    .add(MemoryRegion::new(v.start, round_mem(v.length), region_name));
     }
+    raw_regions.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap() );
+    let mut candidate_region = raw_regions[0];
+    for r in raw_regions[1..].iter() {
+        if r.start > candidate_region.start + candidate_region.length {
+            ram_config.regions.add(candidate_region);
+            candidate_region = r.to_owned();
+        } else {
+            candidate_region.length = (r.start + r.length) - candidate_region.start;
+        }
+    }
+    ram_config.regions.add(candidate_region);
 }
 fn main() {
     env_logger::init();
@@ -258,36 +271,24 @@ fn main() {
                         csr_top = peripheral.base;
                     }
                 }
-                for region in desc.memory_regions {
-                    // Ignore the "CSR" region and manually reconstruct it, because this
-                    // region is largely empty and we want to avoid allocating too much space.
-                    if region.name == "CSR" {
-                        const PAGE_SIZE: u64 = 4096;
-                        // round to the nearest page, then add one page as the last entry in the csr_top
-                        // is an alloatable page, and not an end-stop.
-                        let length = if csr_top - region.base & (PAGE_SIZE - 1) == 0 {
-                            csr_top - region.base
-                        } else {
-                            ((csr_top - region.base) & !(PAGE_SIZE - 1)) + PAGE_SIZE
-                        } + PAGE_SIZE;
-                        map.insert(
-                            "corecsr".to_string(),
-                            tools::utils::CsrMemoryRegion {
-                                start: region.base.try_into().unwrap(),
-                                length: length
-                                    .try_into()
-                                    .unwrap(),
-                            },
-                        );
-                    } else {
-                        map.insert(
-                            region.name.to_lowercase(),
-                            tools::utils::CsrMemoryRegion {
-                                start: region.base.try_into().unwrap(),
-                                length: region.size.try_into().unwrap(),
-                            },
-                        );
+                for mut region in desc.memory_regions {
+                    loop {
+                        if map.contains_key(&region.name.to_lowercase()) {
+                            let mut new_name = region.name.to_lowercase();
+                            new_name.push_str("_");
+                            region.name = new_name;
+                            continue;
+                        }
+                        break;
                     }
+                    println!("{}: {:x}", region.name, region.base);
+                    map.insert(
+                        region.name.to_lowercase(),
+                        tools::utils::CsrMemoryRegion {
+                            start: region.base.try_into().unwrap(),
+                            length: region.size.try_into().unwrap(),
+                        },
+                    );
                 }
             }
         }

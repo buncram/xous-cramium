@@ -120,15 +120,14 @@ mod implementation {
     pub struct Output {}
 
     pub fn init() -> Output {
-        if cfg!(feature = "logging") {
-            #[cfg(feature="cramium-fpga")]
-            let uart = xous::syscall::map_memory(
-                xous::MemoryAddress::new(utra::console::HW_CONSOLE_BASE),
-                None,
-                4096,
-                xous::MemoryFlags::R | xous::MemoryFlags::W,
-            )
-            .expect("couldn't map serial port");
+        #[cfg(feature="cramium-fpga")]
+        let uart = xous::syscall::map_memory(
+            xous::MemoryAddress::new(utra::duart::HW_DUART_BASE),
+            None,
+            4096,
+            xous::MemoryFlags::R | xous::MemoryFlags::W,
+        )
+        .expect("couldn't map serial port");
         // TODO: migrate this to a "proper" UART that is available on SoC hardware, but for now all we have access to is the DUART.
         #[cfg(feature="cramium-soc")]
         let uart = xous::syscall::map_memory(
@@ -139,31 +138,30 @@ mod implementation {
         )
         .expect("couldn't map serial port");
         unsafe { crate::debug::DEFAULT_UART_ADDR = uart.as_mut_ptr() as _ };
-            println!("Mapped UART @ {:08x}", uart.as_ptr() as usize);
-            println!("Process: map success!");
+        println!("Mapped UART @ {:08x}", uart.as_ptr() as usize);
+        println!("Process: map success!");
 
-            #[cfg(feature="inject")]
-            {
-                let mut uart_csr = CSR::new(uart.as_mut_ptr() as *mut u32);
-                let inject_mem = xous::syscall::map_memory(
-                    xous::MemoryAddress::new(utra::keyinject::HW_KEYINJECT_BASE),
-                    None,
-                    4096,
-                    xous::MemoryFlags::R | xous::MemoryFlags::W,
-                )
-                .expect("couldn't map keyinjection CSR range");
-                println!("Note: character injection via console UART is enabled.");
+        #[cfg(feature="inject")]
+        {
+            let mut uart_csr = CSR::new(uart.as_mut_ptr() as *mut u32);
+            let inject_mem = xous::syscall::map_memory(
+                xous::MemoryAddress::new(utra::keyinject::HW_KEYINJECT_BASE),
+                None,
+                4096,
+                xous::MemoryFlags::R | xous::MemoryFlags::W,
+            )
+            .expect("couldn't map keyinjection CSR range");
+            println!("Note: character injection via console UART is enabled.");
 
-                println!("Allocating IRQ...");
-                xous::syscall::claim_interrupt(
-                    utra::console::CONSOLE_IRQ,
-                    handle_console_irq,
-                    inject_mem.as_mut_ptr() as *mut usize,
-                )
-                .expect("couldn't claim interrupt");
-                println!("Claimed IRQ {}", utra::console::CONSOLE_IRQ);
-                uart_csr.rmwf(utra::uart::EV_ENABLE_RX, 1);
-            }
+            println!("Allocating IRQ...");
+            xous::syscall::claim_interrupt(
+                utra::console::CONSOLE_IRQ,
+                handle_console_irq,
+                inject_mem.as_mut_ptr() as *mut usize,
+            )
+            .expect("couldn't claim interrupt");
+            println!("Claimed IRQ {}", utra::console::CONSOLE_IRQ);
+            uart_csr.rmwf(utra::uart::EV_ENABLE_RX, 1);
         }
         Output {}
     }
@@ -222,12 +220,11 @@ mod implementation {
     impl OutputWriter {
         pub fn putc(&self, c: u8) {
             #[cfg(feature="cramium-fpga")]
-            if cfg!(feature = "logging") {
+            {
                 let mut uart_csr = CSR::new(unsafe { crate::debug::DEFAULT_UART_ADDR as *mut u32 });
 
-                // Wait until TXFULL is `0`
-                while uart_csr.r(utra::uart::TXFULL) != 0 {}
-                uart_csr.wo(utra::uart::RXTX, c as u32);
+                while uart_csr.r(utra::duart::SFR_SR) != 0 {}
+                uart_csr.wo(utra::duart::SFR_TXD, c as u32);
 
                 // there's a race condition in the handler, if a new character comes in while handling the interrupt,
                 // the pending bit never clears. If the console seems to freeze, uncomment this line.
@@ -235,7 +232,7 @@ mod implementation {
                 // uart_csr.wfo(utra::uart::EV_PENDING_RX, 1);
             }
             #[cfg(feature="cramium-soc")]
-            if cfg!(feature = "logging") {
+            {
                 let mut uart_csr = CSR::new(unsafe { crate::debug::DEFAULT_UART_ADDR as *mut u32 });
 
                 while uart_csr.r(utra::duart::SFR_SR) != 0 {}
@@ -314,7 +311,7 @@ fn handle_scalar(
         }
         1200 => writeln!(output, "Terminating process").unwrap(),
         2000 => {
-            #[cfg(any(feature="precursor", feature="cramium-fpga", feature="cramium-soc", feature="renode"))]
+            #[cfg(any(feature="precursor", feature="renode"))]
             crate::debug::DEFAULT.enable_rx();
             writeln!(output, "Resuming logger").unwrap();
         }
@@ -458,23 +455,6 @@ fn reader_thread(arg: usize) {
 }
 
 fn main() -> ! {
-    /*
-    #[cfg(baremetal)]
-    {
-        // use this to select which UART to monitor in the main loop
-        use utralib::generated::*;
-        let gpio_base = xous::syscall::map_memory(
-            xous::MemoryAddress::new(utra::gpio::HW_GPIO_BASE),
-            None,
-            4096,
-            xous::MemoryFlags::R | xous::MemoryFlags::W,
-        )
-        .expect("couldn't map GPIO CSR range");
-        let mut gpio = CSR::new(gpio_base.as_mut_ptr() as *mut u32);
-        gpio.wfo(utra::gpio::UARTSEL_UARTSEL, 1); // 0 = kernel, 1 = log, 2 = app_uart
-    }
-    */
-
     let mut output = implementation::init();
     let mut writer = output.get_writer();
     println!("LOG: my PID is {}", xous::process::id());

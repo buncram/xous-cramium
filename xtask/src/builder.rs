@@ -657,7 +657,7 @@ impl Builder {
             }
 
             // ---------- extract SVD file path, as computed by utralib ----------
-            let svd_path = "precursors/soc.svd".to_string();
+            let svd_path = "precursors/daric.svd".to_string();
 
             // ---------- install any pre-built packages ----------
             services_path.append(&mut self.fetch_prebuilds()?);
@@ -792,9 +792,10 @@ impl Builder {
         // insert the core complex SVD file
         args.push("--extra-svd");
         args.push("precursors/core.svd");
-        // insert a window for PIO testing
-        args.push("--extra-svd");
-        args.push("precursors/pio.svd");
+        if self.has_feature("cramium-fpga") {
+            args.push("--extra-svd");
+            args.push("precursors/soc.svd");
+        }
 
         let status = Command::new(cargo())
             .current_dir(project_root())
